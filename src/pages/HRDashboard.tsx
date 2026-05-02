@@ -147,30 +147,18 @@ export default function HRDashboard() {
             </div>
           </TabsContent>
 
-          {/* ATTENDANCE */}
+          {/* ATTENDANCE — daily pairs with shift, late, OT */}
           <TabsContent value="attendance" className="space-y-4">
             <div className="flex flex-wrap gap-3">
               <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="rounded-xl max-w-[200px]" />
-              <Input placeholder="Filter by Company ID" value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className="rounded-xl max-w-[260px]" />
+              <Input placeholder="Filter by Company ID or name" value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className="rounded-xl max-w-[260px]" />
               <Button variant="outline" onClick={() => { setDateFilter(""); setEmployeeFilter(""); }} className="rounded-xl">Clear</Button>
             </div>
-            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left">
-                  <tr><th className="p-4">Company ID</th><th className="p-4">Type</th><th className="p-4">Timestamp</th></tr>
-                </thead>
-                <tbody>
-                  {filteredAttendance.map(r => (
-                    <tr key={r.id} className="border-t border-border hover:bg-muted/30">
-                      <td className="p-4 font-mono">{r.company_id}</td>
-                      <td className="p-4"><Badge className={`rounded-lg ${r.type === "time_in" ? "bg-success/15 text-success" : "bg-destructive/10 text-destructive"}`} variant="secondary">{r.type}</Badge></td>
-                      <td className="p-4">{format(new Date(r.timestamp), "PPp")}</td>
-                    </tr>
-                  ))}
-                  {filteredAttendance.length === 0 && (<tr><td colSpan={3} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>)}
-                </tbody>
-              </table>
-            </div>
+            <AttendanceTable
+              attendance={filteredAttendance}
+              profiles={profiles}
+              settings={settings}
+            />
           </TabsContent>
 
           {/* ANALYTICS */}
