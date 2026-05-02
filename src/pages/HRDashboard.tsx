@@ -228,7 +228,7 @@ function Kpi({ label, value, icon }: { label: string; value: any; icon: React.Re
 
 function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ company_id: "", full_name: "", password: "", role: "Employee", dob: "" });
+  const [form, setForm] = useState({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "" });
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -240,13 +240,15 @@ function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
       password: form.password,
       role: form.role,
       dob: form.dob || null,
+      email: form.email.trim() || null,
+      position: form.position.trim() || null,
       is_approved: true,
     });
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success("Employee added");
     setOpen(false);
-    setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "" });
+    setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "" });
     onAdded();
   };
 
@@ -260,6 +262,8 @@ function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
         <div className="space-y-3">
           <Field label="Company ID"><Input value={form.company_id} onChange={e => setForm({ ...form, company_id: e.target.value })} /></Field>
           <Field label="Full name"><Input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
+          <Field label="Position"><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="e.g. Operator" /></Field>
           <Field label="Password"><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
           <Field label="Role"><Input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} placeholder="Employee / HR / Admin" /></Field>
           <Field label="Date of birth"><Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></Field>
