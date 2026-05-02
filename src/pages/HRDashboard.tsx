@@ -93,11 +93,12 @@ export default function HRDashboard() {
         </div>
 
         <Tabs defaultValue="employees" className="space-y-4">
-          <TabsList className="rounded-2xl">
+          <TabsList className="rounded-2xl flex-wrap h-auto">
             <TabsTrigger value="employees" className="rounded-xl">Employees</TabsTrigger>
             <TabsTrigger value="attendance" className="rounded-xl">Attendance</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-xl">Analytics</TabsTrigger>
             <TabsTrigger value="announcements" className="rounded-xl">Announcements</TabsTrigger>
+            <TabsTrigger value="settings" className="rounded-xl">Settings</TabsTrigger>
           </TabsList>
 
           {/* EMPLOYEES */}
