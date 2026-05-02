@@ -170,7 +170,7 @@ export default function Kiosk() {
           <img src={abnLogo} alt="AB Nutribev Corp." className="h-12 w-12 rounded-xl bg-white/95 p-1 shadow-soft" />
           <div className="leading-tight">
             <div className="font-bold text-lg">AB Nutribev Corp.</div>
-            <div className="text-xs opacity-90 uppercase tracking-widest">Attendance Kiosk</div>
+            <div className="text-xs opacity-90 uppercase tracking-widest">Gaurd Manifest Kiosk</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -236,7 +236,7 @@ export default function Kiosk() {
             <div className="text-center mb-4">
               <h2 className="text-2xl font-bold">Tap Your Company ID</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                System auto-detects Time In or Time Out.
+                Welcome to Nutribev Corp.
               </p>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
