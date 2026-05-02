@@ -4,6 +4,14 @@
 
 🔗 Demo: [https://your-link.com](https://mynutribev.vercel.app/)
 
+## 📷 System Preview
+
+### 🏭 Factory Background
+![Factory](https://raw.githubusercontent.com/nashmagbanua/nutribev-hub/main/src/assets/factory-bg.webp)
+
+---
+
+
 A modern **Employee Attendance, Kiosk, and HR Management System** built for ABN Engineering.
 
 This system supports:
@@ -129,13 +137,6 @@ This system is designed to:
 
 Aurelio Galelio Jhonas Magbanua 
 Mantech - Utilities Dept.
-
----
-
-## 📷 Preview
-
-![Kiosk](./assets/factory-bg.webp)
-
 
 ---
 
