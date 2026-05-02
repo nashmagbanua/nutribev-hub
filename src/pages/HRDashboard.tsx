@@ -21,19 +21,22 @@ export default function HRDashboard() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [settings, setSettings] = useState<KioskSettings | null>(null);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
 
   const loadAll = async () => {
-    const [p, a, ann] = await Promise.all([
-      supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved").order("created_at", { ascending: false }),
+    const [p, a, ann, s] = await Promise.all([
+      supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position").order("created_at", { ascending: false }),
       supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(500),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
+      supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(),
     ]);
     setProfiles((p.data as Profile[]) ?? []);
     setAttendance((a.data as AttendanceRow[]) ?? []);
     setAnnouncements((ann.data as Announcement[]) ?? []);
+    setSettings((s.data as KioskSettings) ?? null);
   };
 
   useEffect(() => { loadAll(); }, []);
