@@ -159,3 +159,76 @@ function Stat({ label, value, className = "", small = false }: { label: string; 
 function Legend({ color, label, outline }: { color: string; label: string; outline?: boolean }) {
   return <div className="flex items-center gap-2"><div className={`h-4 w-4 rounded ${outline ? "" : color} ${outline ? color : ""}`} />{label}</div>;
 }
+
+function ChangePasswordDialog({ companyId }: { companyId: string }) {
+  const [open, setOpen] = useState(false);
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (newPw.length < 6) { toast.error("New password must be at least 6 characters."); return; }
+    if (newPw !== confirm) { toast.error("Passwords do not match."); return; }
+    setSaving(true);
+    const { data, error } = await supabase.from("profiles").select("id").eq("company_id", companyId).eq("password", oldPw).maybeSingle();
+    if (error || !data) { toast.error("Current password incorrect."); setSaving(false); return; }
+    const { error: uErr } = await supabase.from("profiles").update({ password: newPw }).eq("id", data.id);
+    setSaving(false);
+    if (uErr) { toast.error(uErr.message); return; }
+    toast.success("Password updated.");
+    setOpen(false); setOldPw(""); setNewPw(""); setConfirm("");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="rounded-xl flex-1"><KeyRound className="h-4 w-4 mr-2" />Change Password</Button>
+      </DialogTrigger>
+      <DialogContent className="rounded-2xl">
+        <DialogHeader><DialogTitle>Change Password</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5"><Label>Current password</Label><Input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>New password</Label><Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>Confirm new password</Label><Input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} className="rounded-xl">Cancel</Button>
+          <Button onClick={submit} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground">{saving ? "Saving…" : "Update"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UpdateEmailDialog({ companyId, current }: { companyId: string; current: string }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState(current);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) { toast.error("Invalid email."); return; }
+    setSaving(true);
+    const { error } = await supabase.from("profiles").update({ email: email || null }).eq("company_id", companyId);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Email updated. Please log in again to refresh.");
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="rounded-xl flex-1"><Mail className="h-4 w-4 mr-2" />Email</Button>
+      </DialogTrigger>
+      <DialogContent className="rounded-2xl">
+        <DialogHeader><DialogTitle>Link Email Address</DialogTitle></DialogHeader>
+        <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} /></div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} className="rounded-xl">Cancel</Button>
+          <Button onClick={submit} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground">{saving ? "Saving…" : "Save"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
