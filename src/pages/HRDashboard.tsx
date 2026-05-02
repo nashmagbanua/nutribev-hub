@@ -306,3 +306,189 @@ function AnnouncementForm({ onAdded }: { onAdded: () => void }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
+
+function AttendanceTable({ attendance, profiles, settings }: { attendance: AttendanceRow[]; profiles: Profile[]; settings: KioskSettings | null }) {
+  const profileMap = useMemo(() => {
+    const m: Record<string, Profile> = {};
+    profiles.forEach(p => { m[p.company_id] = p; });
+    return m;
+  }, [profiles]);
+
+  const grouped = useMemo(() => {
+    const map: Record<string, { date: string; companyId: string; in?: AttendanceRow; out?: AttendanceRow }> = {};
+    attendance.forEach(r => {
+      const date = formatPH(r.timestamp, { year: "numeric", month: "2-digit", day: "2-digit" });
+      const key = `${r.company_id}|${date}`;
+      map[key] = map[key] ?? { date, companyId: r.company_id };
+      if (r.type === "time_in") map[key].in = r;
+      else map[key].out = r;
+    });
+    return Object.values(map).sort((a, b) => (b.date + b.companyId).localeCompare(a.date + a.companyId));
+  }, [attendance]);
+
+  const lateDay = settings?.late_threshold_day ?? "06:05";
+  const lateNight = settings?.late_threshold_night ?? "18:05";
+
+  const isLate = (row: AttendanceRow): boolean => {
+    if (!row) return false;
+    const t = formatPH(row.timestamp, { hour: "2-digit", minute: "2-digit", hour12: false });
+    const threshold = row.shift === "night" ? lateNight : lateDay;
+    return t > threshold;
+  };
+
+  const computeOT = (g: { in?: AttendanceRow; out?: AttendanceRow }): string => {
+    if (!g.in || !g.out) return "—";
+    const outDate = new Date(g.out.timestamp);
+    const inDate = new Date(g.in.timestamp);
+    const shift = g.in.shift;
+    const inPHHour = parseInt(formatPH(inDate, { hour: "2-digit", hour12: false }));
+    const endPH = new Date(inDate);
+    if (shift === "day") {
+      endPH.setUTCHours(18 - 8, 0, 0, 0);
+      if (inPHHour >= 18) endPH.setUTCDate(endPH.getUTCDate() + 1);
+    } else {
+      endPH.setUTCHours(6 - 8, 0, 0, 0);
+      endPH.setUTCDate(endPH.getUTCDate() + 1);
+    }
+    const diffMin = Math.round((outDate.getTime() - endPH.getTime()) / 60000);
+    if (diffMin <= 0) return "—";
+    const h = Math.floor(diffMin / 60); const m = diffMin % 60;
+    return `${h}h ${m}m`;
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
+      <table className="w-full text-sm min-w-[800px]">
+        <thead className="bg-muted/50 text-left">
+          <tr>
+            <th className="p-4">Date</th>
+            <th className="p-4">Employee</th>
+            <th className="p-4">Position</th>
+            <th className="p-4">Time In</th>
+            <th className="p-4">Time Out</th>
+            <th className="p-4">Shift</th>
+            <th className="p-4">Status</th>
+            <th className="p-4">Overtime</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grouped.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>}
+          {grouped.map(g => {
+            const p = profileMap[g.companyId];
+            const late = g.in ? isLate(g.in) : false;
+            return (
+              <tr key={`${g.companyId}-${g.date}`} className="border-t border-border hover:bg-muted/30">
+                <td className="p-4">{g.date}</td>
+                <td className="p-4 font-medium">{p?.full_name ?? g.companyId}</td>
+                <td className="p-4 text-muted-foreground">{p?.position ?? "—"}</td>
+                <td className="p-4">{g.in ? formatPH(g.in.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
+                <td className="p-4">{g.out ? formatPH(g.out.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
+                <td className="p-4">{g.in?.shift ? <Badge variant="secondary" className="rounded-lg capitalize">{g.in.shift}</Badge> : "—"}</td>
+                <td className="p-4">
+                  {late
+                    ? <Badge className="rounded-lg bg-warning/20 text-foreground border border-warning/40">Late</Badge>
+                    : g.in ? <Badge className="rounded-lg bg-success/15 text-success">On time</Badge> : <Badge variant="secondary" className="rounded-lg">—</Badge>}
+                </td>
+                <td className="p-4 font-mono text-xs">{computeOT(g)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; onSaved: () => void }) {
+  const [form, setForm] = useState<Partial<KioskSettings>>({
+    canteen_status: settings?.canteen_status ?? "open",
+    clinic_status: settings?.clinic_status ?? "open",
+    late_threshold_day: settings?.late_threshold_day ?? "06:05",
+    late_threshold_night: settings?.late_threshold_night ?? "18:05",
+    geofence_radius_m: settings?.geofence_radius_m ?? 100,
+    geofence_lat: settings?.geofence_lat ?? 14.258657284905194,
+    geofence_lng: settings?.geofence_lng ?? 121.11928280273479,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (settings) setForm({
+      canteen_status: settings.canteen_status,
+      clinic_status: settings.clinic_status,
+      late_threshold_day: settings.late_threshold_day,
+      late_threshold_night: settings.late_threshold_night,
+      geofence_radius_m: settings.geofence_radius_m,
+      geofence_lat: settings.geofence_lat,
+      geofence_lng: settings.geofence_lng,
+    });
+  }, [settings]);
+
+  const save = async () => {
+    setSaving(true);
+    const payload = { ...form, updated_at: new Date().toISOString() };
+    const { error } = settings
+      ? await supabase.from("kiosk_settings").update(payload).eq("id", settings.id)
+      : await supabase.from("kiosk_settings").insert(payload);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Settings saved.");
+    onSaved();
+  };
+
+  return (
+    <div className="grid md:grid-cols-2 gap-6">
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold flex items-center gap-2"><SettingsIcon className="h-4 w-4 text-primary" /> Operational Status</h3>
+        <div className="space-y-3">
+          <StatusRow icon={<Coffee className="h-4 w-4" />} label="Canteen"
+            value={form.canteen_status as any} onChange={v => setForm({ ...form, canteen_status: v })} />
+          <StatusRow icon={<Stethoscope className="h-4 w-4" />} label="Clinic"
+            value={form.clinic_status as any} onChange={v => setForm({ ...form, clinic_status: v })} />
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold">Late Policy (PH 24h)</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Day shift threshold</Label>
+            <Input type="time" value={form.late_threshold_day as string} onChange={e => setForm({ ...form, late_threshold_day: e.target.value })} className="rounded-xl" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Night shift threshold</Label>
+            <Input type="time" value={form.late_threshold_night as string} onChange={e => setForm({ ...form, late_threshold_night: e.target.value })} className="rounded-xl" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4 md:col-span-2">
+        <h3 className="font-bold">Geofence</h3>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div className="space-y-1.5"><Label>Latitude</Label><Input type="number" step="any" value={form.geofence_lat ?? 0} onChange={e => setForm({ ...form, geofence_lat: parseFloat(e.target.value) })} className="rounded-xl" /></div>
+          <div className="space-y-1.5"><Label>Longitude</Label><Input type="number" step="any" value={form.geofence_lng ?? 0} onChange={e => setForm({ ...form, geofence_lng: parseFloat(e.target.value) })} className="rounded-xl" /></div>
+          <div className="space-y-1.5"><Label>Radius (meters)</Label><Input type="number" value={form.geofence_radius_m ?? 100} onChange={e => setForm({ ...form, geofence_radius_m: parseInt(e.target.value || "0") })} className="rounded-xl" /></div>
+        </div>
+      </div>
+
+      <div className="md:col-span-2">
+        <Button onClick={save} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground hover:opacity-90 shadow-soft">{saving ? "Saving…" : "Save Settings"}</Button>
+      </div>
+    </div>
+  );
+}
+
+function StatusRow({ icon, label, value, onChange }: { icon: React.ReactNode; label: string; value: "open"|"closed"|"holiday"; onChange: (v: "open"|"closed"|"holiday") => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 text-sm font-medium"><span className="text-primary">{icon}</span>{label}</div>
+      <Select value={value} onValueChange={(v) => onChange(v as any)}>
+        <SelectTrigger className="rounded-xl w-40"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="open">Open</SelectItem>
+          <SelectItem value="closed">Closed</SelectItem>
+          <SelectItem value="holiday">Holiday</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
