@@ -3,7 +3,12 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase, type AttendanceRow } from "@/lib/supabase";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar as CalIcon, IdCard, User, Cake, Briefcase } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { Calendar as CalIcon, IdCard, User, Cake, Briefcase, Mail, KeyRound } from "lucide-react";
 import {
   startOfMonth, endOfMonth, eachDayOfInterval, format, isSameDay, isWeekend, isAfter, startOfDay,
 } from "date-fns";
@@ -69,7 +74,12 @@ export default function EmployeeDashboard() {
               <Row icon={<User className="h-4 w-4" />} label="Name" value={profile.full_name} />
               <Row icon={<IdCard className="h-4 w-4" />} label="Company ID" value={profile.company_id} />
               <Row icon={<Briefcase className="h-4 w-4" />} label="Role" value={profile.role} />
+              <Row icon={<Mail className="h-4 w-4" />} label="Email" value={profile.email ?? "—"} />
               <Row icon={<Cake className="h-4 w-4" />} label="Date of Birth" value={profile.dob ? format(new Date(profile.dob), "PPP") : "—"} />
+            </div>
+            <div className="mt-4 flex gap-2">
+              <ChangePasswordDialog companyId={profile.company_id} />
+              <UpdateEmailDialog companyId={profile.company_id} current={profile.email ?? ""} />
             </div>
           </section>
 
