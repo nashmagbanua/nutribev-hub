@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "./ThemeToggle";
 import { LogOut, LayoutDashboard, Users } from "lucide-react";
+import abnLogo from "@/assets/abn-logo.svg";
 
 export function AppHeader() {
   const { profile, logout } = useAuth();
@@ -16,7 +17,7 @@ export function AppHeader() {
     <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur-md">
       <div className="container flex h-16 items-center justify-between">
         <Link to="/dashboard" className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl gradient-primary shadow-soft flex items-center justify-center text-primary-foreground font-bold">AB</div>
+          <img src={abnLogo} alt="AB Nutribev Corp." className="h-9 w-9 rounded-xl bg-card shadow-soft p-0.5" />
           <span className="font-bold text-lg hidden sm:inline">AB Nutribev</span>
         </Link>
         <nav className="flex items-center gap-2">
