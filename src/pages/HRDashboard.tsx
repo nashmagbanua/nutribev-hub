@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { supabase, type Profile, type AttendanceRow, type Announcement } from "@/lib/supabase";
+import { supabase, formatPH, type Profile, type AttendanceRow, type Announcement, type KioskSettings } from "@/lib/supabase";
 import { AppHeader } from "@/components/AppHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Search, UserPlus, Users, CalendarCheck, Megaphone, Trash2, Plus } from "lucide-react";
+import { Search, UserPlus, Users, CalendarCheck, Megaphone, Trash2, Plus, Settings as SettingsIcon, Coffee, Stethoscope } from "lucide-react";
 import { format, subDays, startOfDay } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
