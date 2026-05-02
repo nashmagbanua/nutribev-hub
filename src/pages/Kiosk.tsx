@@ -1,171 +1,320 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { supabase, type Announcement } from "@/lib/supabase";
+import { useNavigate } from "react-router-dom";
+import {
+  supabase,
+  haversineMeters,
+  shiftFromTimeIn,
+  formatPH,
+  ADMIN_SHORTCUT_CODE,
+  COMPANY_LAT,
+  COMPANY_LNG,
+  DEFAULT_RADIUS_M,
+  type KioskSettings,
+} from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { toast } from "sonner";
-import { ArrowLeft, Clock, LogIn as LogInIcon, LogOut as LogOutIcon, Loader2, ShieldCheck, Megaphone } from "lucide-react";
+import { Clock, Loader2, MapPin, ShieldCheck, UserPlus, LogIn as LogInIcon } from "lucide-react";
+import factoryBg from "@/assets/factory-bg.webp";
+import abnLogo from "@/assets/abn-logo.svg";
+import { Link } from "react-router-dom";
 
-const IDLE_MS = 10_000;
+type Status = "open" | "closed" | "holiday";
 
 export default function Kiosk() {
-  const [companyId, setCompanyId] = useState("");
+  const [code, setCode] = useState("");
   const [now, setNow] = useState(new Date());
-  const [submitting, setSubmitting] = useState<null | "in" | "out">(null);
-  const [idle, setIdle] = useState(false);
-  const [ads, setAds] = useState<Announcement[]>([]);
-  const [adIndex, setAdIndex] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState<{ name: string; action: "in" | "out"; time: string } | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number; acc: number } | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<KioskSettings | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const idleTimer = useRef<number | null>(null);
+  const navigate = useNavigate();
 
+  // Clock
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // load announcements
+  // Settings (canteen, clinic, geofence, threshold)
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("announcements")
-        .select("*")
-        .eq("active", true)
-        .order("created_at", { ascending: false });
-      setAds((data as Announcement[]) ?? []);
+      const { data } = await supabase.from("kiosk_settings").select("*").limit(1).maybeSingle();
+      if (data) setSettings(data as KioskSettings);
     })();
   }, []);
 
-  // rotate ads
+  // Geolocation
   useEffect(() => {
-    if (!idle || ads.length === 0) return;
-    const t = setInterval(() => setAdIndex(i => (i + 1) % ads.length), 6000);
-    return () => clearInterval(t);
-  }, [idle, ads.length]);
-
-  // idle detection
-  const resetIdle = () => {
-    setIdle(false);
-    if (idleTimer.current) window.clearTimeout(idleTimer.current);
-    idleTimer.current = window.setTimeout(() => setIdle(true), IDLE_MS);
-  };
-  useEffect(() => {
-    resetIdle();
-    const events = ["mousemove", "keydown", "touchstart", "click"];
-    events.forEach(e => window.addEventListener(e, resetIdle));
-    return () => {
-      events.forEach(e => window.removeEventListener(e, resetIdle));
-      if (idleTimer.current) window.clearTimeout(idleTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!("geolocation" in navigator)) {
+      setGeoError("Geolocation not supported by this device.");
+      return;
+    }
+    const watch = navigator.geolocation.watchPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy });
+        setGeoError(null);
+      },
+      (err) => setGeoError(err.message || "Unable to get your location."),
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 15_000 }
+    );
+    return () => navigator.geolocation.clearWatch(watch);
   }, []);
 
-  const punch = async (type: "time_in" | "time_out") => {
-    if (!companyId.trim()) { toast.error("Enter your Company ID"); return; }
-    setSubmitting(type === "time_in" ? "in" : "out");
+  const radius = settings?.geofence_radius_m ?? DEFAULT_RADIUS_M;
+  const centerLat = settings?.geofence_lat ?? COMPANY_LAT;
+  const centerLng = settings?.geofence_lng ?? COMPANY_LNG;
+  const distance = coords ? Math.round(haversineMeters(coords.lat, coords.lng, centerLat, centerLng)) : null;
+  const inside = distance !== null && distance <= radius;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = code.trim();
+    if (!id) return;
+
+    // Admin shortcut
+    if (id === ADMIN_SHORTCUT_CODE) {
+      navigate("/attendance-list");
+      return;
+    }
+
+    if (!inside) {
+      toast.error("You are outside company premises.");
+      return;
+    }
+
+    setBusy(true);
     try {
       const { data: profile, error: pErr } = await supabase
         .from("profiles")
-        .select("company_id, full_name, is_approved")
-        .eq("company_id", companyId.trim())
+        .select("id, company_id, full_name, position, is_approved")
+        .eq("company_id", id)
         .maybeSingle();
       if (pErr) throw pErr;
-      if (!profile) { toast.error("Company ID not found."); return; }
-      if (!profile.is_approved) { toast.error("Account not approved by HR."); return; }
+      if (!profile) {
+        toast.error("Company ID not found.");
+        return;
+      }
+      if (!profile.is_approved) {
+        toast.error("Account pending HR approval.");
+        return;
+      }
 
-      const { error } = await supabase.from("attendance").insert({
+      // Check today's logs (PH date) for this employee
+      const today = formatPH(new Date(), { year: "numeric", month: "2-digit", day: "2-digit" });
+      // get all events for today via timezone-safe range
+      const startUtc = new Date(`${toIso(today)}T00:00:00+08:00`).toISOString();
+      const endUtc = new Date(`${toIso(today)}T23:59:59+08:00`).toISOString();
+      const { data: logs } = await supabase
+        .from("attendance")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .gte("timestamp", startUtc)
+        .lte("timestamp", endUtc);
+
+      const hasIn = (logs ?? []).some((r: any) => r.type === "time_in");
+      const hasOut = (logs ?? []).some((r: any) => r.type === "time_out");
+
+      if (hasIn && hasOut) {
+        toast.error("You have already completed Time In and Time Out for today.");
+        return;
+      }
+
+      const action: "in" | "out" = hasIn ? "out" : "in";
+      const ts = new Date();
+      const shift = action === "in" ? shiftFromTimeIn(ts) : null;
+
+      const { error: insErr } = await supabase.from("attendance").insert({
         company_id: profile.company_id,
-        type,
-        timestamp: new Date().toISOString(),
+        type: action === "in" ? "time_in" : "time_out",
+        timestamp: ts.toISOString(),
+        shift,
       });
-      if (error) throw error;
-      toast.success(`${type === "time_in" ? "Time In" : "Time Out"} recorded — ${profile.full_name}`);
-      setCompanyId("");
-      inputRef.current?.focus();
+      if (insErr) throw insErr;
+
+      const timeStr = formatPH(ts, { hour: "2-digit", minute: "2-digit", hour12: true });
+      setConfirm({ name: profile.full_name, action, time: timeStr });
+      setCode("");
+      // Auto-reset
+      setTimeout(() => {
+        setConfirm(null);
+        inputRef.current?.focus();
+      }, 4000);
     } catch (err: any) {
       toast.error(err.message ?? "Failed to record attendance");
     } finally {
-      setSubmitting(null);
+      setBusy(false);
     }
   };
 
-  const dateStr = now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const timeStr = now.toLocaleTimeString();
+  const dateStr = formatPH(now, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeStr = formatPH(now, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
 
   return (
-    <div className="min-h-screen gradient-hero text-primary-foreground relative overflow-hidden">
-      <Link to="/" className="absolute top-4 left-4 z-50 inline-flex items-center gap-2 text-sm bg-white/10 hover:bg-white/20 backdrop-blur rounded-full px-4 py-2 transition-smooth">
-        <ArrowLeft className="h-4 w-4" /> Exit Kiosk
-      </Link>
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Background */}
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url(${factoryBg})` }}
+        aria-hidden
+      />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/85 via-primary/70 to-accent/60 backdrop-blur-[2px]" aria-hidden />
 
-      {/* Idle ads overlay */}
-      {idle && (
-        <div className="absolute inset-0 z-40 bg-background/95 backdrop-blur-md flex flex-col animate-fade-in" onClick={resetIdle}>
-          <div className="flex-1 flex items-center justify-center p-10">
-            {ads.length > 0 ? (
-              <AdSlide ad={ads[adIndex]} />
-            ) : (
-              <div className="text-center text-foreground max-w-2xl">
-                <ShieldCheck className="h-20 w-20 mx-auto text-primary mb-6" />
-                <h2 className="text-5xl font-extrabold mb-4">Safety First</h2>
-                <p className="text-2xl text-muted-foreground">Always wear your PPE. Report hazards immediately. A safe workplace is everyone's responsibility.</p>
-              </div>
-            )}
+      {/* Top bar */}
+      <header className="relative z-10 container flex items-center justify-between py-4">
+        <div className="flex items-center gap-3 text-primary-foreground">
+          <img src={abnLogo} alt="AB Nutribev Corp." className="h-12 w-12 rounded-xl bg-white/95 p-1 shadow-soft" />
+          <div className="leading-tight">
+            <div className="font-bold text-lg">AB Nutribev Corp.</div>
+            <div className="text-xs opacity-90 uppercase tracking-widest">Attendance Kiosk</div>
           </div>
-          <div className="text-center pb-8 text-muted-foreground animate-pulse-glow">Tap or move to continue</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/login"
+            className="hidden sm:inline-flex items-center gap-2 text-sm bg-white/15 hover:bg-white/25 text-primary-foreground backdrop-blur rounded-full px-4 py-2 transition-smooth"
+          >
+            <LogInIcon className="h-4 w-4" /> Employee Login
+          </Link>
+          <Link
+            to="/register"
+            className="hidden sm:inline-flex items-center gap-2 text-sm bg-white/15 hover:bg-white/25 text-primary-foreground backdrop-blur rounded-full px-4 py-2 transition-smooth"
+          >
+            <UserPlus className="h-4 w-4" /> Register
+          </Link>
+          <ThemeToggle />
+        </div>
+      </header>
+
+      <main className="relative z-10 container pb-10 pt-4 md:pt-10 grid lg:grid-cols-[1.1fr_1fr] gap-8 items-center min-h-[calc(100vh-80px)]">
+        {/* Left: clock + status */}
+        <section className="text-primary-foreground space-y-6">
+          <div>
+            <div className="text-sm opacity-90 uppercase tracking-widest">Philippine Time · Asia/Manila</div>
+            <div className="mt-2 flex items-center gap-3 text-5xl md:text-7xl font-extrabold tabular-nums drop-shadow">
+              <Clock className="h-10 w-10 md:h-14 md:w-14 opacity-90" />
+              <span>{timeStr}</span>
+            </div>
+            <div className="mt-2 text-lg md:text-xl opacity-95">{dateStr}</div>
+          </div>
+
+          {/* Geo + facility status */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider opacity-90">
+                <MapPin className="h-4 w-4" /> Location
+              </div>
+              {geoError && <div className="mt-2 text-sm text-red-100">{geoError}</div>}
+              {!geoError && !coords && <div className="mt-2 text-sm opacity-90">Locating…</div>}
+              {coords && (
+                <div className="mt-2 text-sm">
+                  {inside ? (
+                    <span className="inline-flex items-center gap-2 font-semibold">
+                      <ShieldCheck className="h-4 w-4" /> Inside premises ({distance}m)
+                    </span>
+                  ) : (
+                    <span className="font-semibold">Outside premises ({distance}m, allowed {radius}m)</span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md p-4 space-y-2">
+              <div className="text-sm font-semibold uppercase tracking-wider opacity-90">Facilities</div>
+              <FacilityRow label="Canteen" status={(settings?.canteen_status ?? "open") as Status} />
+              <FacilityRow label="Clinic" status={(settings?.clinic_status ?? "open") as Status} />
+            </div>
+          </div>
+        </section>
+
+        {/* Right: input card */}
+        <section>
+          <div className="rounded-2xl bg-white/95 dark:bg-card/95 backdrop-blur-xl shadow-elegant p-6 md:p-8 border border-white/40">
+            <div className="text-center mb-4">
+              <h2 className="text-2xl font-bold">Tap Your Company ID</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                System auto-detects Time In or Time Out.
+              </p>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Input
+                ref={inputRef}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Enter or scan Company ID"
+                className="h-16 text-2xl text-center rounded-2xl"
+                autoFocus
+                disabled={busy}
+              />
+              <Button
+                type="submit"
+                disabled={busy || !code.trim()}
+                className="w-full h-14 rounded-2xl text-lg font-bold gradient-primary text-primary-foreground shadow-elegant hover:opacity-90"
+              >
+                {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : "Submit"}
+              </Button>
+              {!inside && coords && (
+                <p className="text-center text-xs text-destructive font-medium">
+                  Time In/Out is disabled — you are outside company premises.
+                </p>
+              )}
+            </form>
+          </div>
+          <p className="mt-4 text-center text-xs text-primary-foreground/85">
+            Need an account? <Link to="/register" className="underline font-semibold">Register here</Link>
+          </p>
+        </section>
+      </main>
+
+      {/* Confirmation overlay */}
+      {confirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="rounded-2xl bg-card shadow-elegant border border-border p-8 md:p-10 max-w-lg w-full text-center">
+            <div className="mx-auto h-16 w-16 rounded-full bg-success/15 text-success flex items-center justify-center mb-4">
+              <ShieldCheck className="h-8 w-8" />
+            </div>
+            <h3 className="text-2xl font-bold mb-2">
+              {confirm.action === "in"
+                ? `${greet()}, ${confirm.name}.`
+                : `Good job today, ${confirm.name}.`}
+            </h3>
+            <p className="text-lg text-muted-foreground">
+              You are now logged <span className="font-semibold text-foreground">{confirm.action === "in" ? "IN" : "OUT"}</span> at {confirm.time}.
+            </p>
+          </div>
         </div>
       )}
-
-      <div className="container py-10 md:py-16 flex flex-col items-center">
-        <div className="text-center mb-10">
-          <div className="text-sm uppercase tracking-widest opacity-80">AB Nutribev Corp. — Attendance Kiosk</div>
-          <div className="mt-4 flex items-center justify-center gap-3 text-6xl md:text-8xl font-extrabold tabular-nums">
-            <Clock className="h-12 w-12 md:h-16 md:w-16 opacity-90" />
-            <span>{timeStr}</span>
-          </div>
-          <div className="mt-2 text-xl opacity-90">{dateStr}</div>
-        </div>
-
-        <div className="w-full max-w-2xl rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-elegant p-8 md:p-10">
-          <label className="block text-sm uppercase tracking-wider opacity-90 mb-3">Company ID</label>
-          <Input
-            ref={inputRef}
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value)}
-            placeholder="Enter or scan ID"
-            className="h-16 text-3xl text-center rounded-2xl bg-white text-foreground border-0 focus-visible:ring-4 focus-visible:ring-accent"
-            autoFocus
-          />
-          <div className="grid grid-cols-2 gap-4 mt-6">
-            <Button
-              onClick={() => punch("time_in")}
-              disabled={submitting !== null}
-              className="h-20 rounded-2xl text-2xl font-bold bg-success hover:bg-success/90 text-white shadow-elegant"
-            >
-              {submitting === "in" ? <Loader2 className="h-7 w-7 animate-spin" /> : (<><LogInIcon className="h-7 w-7 mr-2" />Time In</>)}
-            </Button>
-            <Button
-              onClick={() => punch("time_out")}
-              disabled={submitting !== null}
-              className="h-20 rounded-2xl text-2xl font-bold bg-destructive hover:bg-destructive/90 text-white shadow-elegant"
-            >
-              {submitting === "out" ? <Loader2 className="h-7 w-7 animate-spin" /> : (<><LogOutIcon className="h-7 w-7 mr-2" />Time Out</>)}
-            </Button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
 
-function AdSlide({ ad }: { ad: Announcement }) {
+function FacilityRow({ label, status }: { label: string; status: Status }) {
+  const map: Record<Status, string> = {
+    open: "bg-success/20 text-white border-success/40",
+    closed: "bg-destructive/20 text-white border-destructive/40",
+    holiday: "bg-warning/20 text-white border-warning/40",
+  };
   return (
-    <div key={ad.id} className="max-w-4xl text-center text-foreground animate-fade-in">
-      {ad.image_url && (
-        <img src={ad.image_url} alt={ad.title} className="rounded-2xl shadow-elegant max-h-[50vh] mx-auto mb-8 object-cover" />
-      )}
-      <div className="inline-flex items-center gap-2 text-primary mb-3"><Megaphone className="h-5 w-5" /><span className="uppercase text-sm tracking-widest">Announcement</span></div>
-      <h2 className="text-5xl font-extrabold mb-4">{ad.title}</h2>
-      {ad.body && <p className="text-2xl text-muted-foreground">{ad.body}</p>}
+    <div className="flex items-center justify-between text-sm">
+      <span>{label}</span>
+      <Badge variant="outline" className={`rounded-lg border ${map[status]} capitalize`}>{status}</Badge>
     </div>
   );
+}
+
+function greet(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function toIso(localPHDate: string): string {
+  // Input from formatPH "MM/DD/YYYY" or "YYYY-MM-DD" — normalize
+  if (/^\d{4}-\d{2}-\d{2}$/.test(localPHDate)) return localPHDate;
+  const [m, d, y] = localPHDate.split("/");
+  return `${y}-${m}-${d}`;
 }

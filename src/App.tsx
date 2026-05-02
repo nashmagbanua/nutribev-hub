@@ -5,9 +5,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Kiosk from "./pages/Kiosk";
+import AttendanceList from "./pages/AttendanceList";
 import EmployeeDashboard from "./pages/EmployeeDashboard";
 import HRDashboard from "./pages/HRDashboard";
 import NotFound from "./pages/NotFound.tsx";
@@ -22,9 +23,10 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={<Kiosk />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/kiosk" element={<Kiosk />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/attendance-list" element={<AttendanceList />} />
               <Route path="/dashboard" element={<ProtectedRoute><EmployeeDashboard /></ProtectedRoute>} />
               <Route path="/hr" element={<ProtectedRoute roles={["HR", "Admin"]}><HRDashboard /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />

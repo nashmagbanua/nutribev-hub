@@ -14,6 +14,8 @@ export type Profile = {
   full_name: string;
   dob: string | null;
   role: string;
+  position?: string | null;
+  email?: string | null;
   avatar_url: string | null;
   password?: string;
   is_approved: boolean;
@@ -24,6 +26,7 @@ export type AttendanceRow = {
   company_id: string;
   timestamp: string;
   type: "time_in" | "time_out";
+  shift?: "day" | "night" | null;
 };
 
 export type Announcement = {
@@ -34,3 +37,53 @@ export type Announcement = {
   active: boolean;
   created_at: string;
 };
+
+export type KioskSettings = {
+  id: string;
+  canteen_status: "open" | "closed" | "holiday";
+  clinic_status: "open" | "closed" | "holiday";
+  late_threshold_day: string;   // "06:05"
+  late_threshold_night: string; // "18:05"
+  geofence_radius_m: number;
+  geofence_lat: number;
+  geofence_lng: number;
+  updated_at: string;
+};
+
+// ===== Constants =====
+export const COMPANY_LAT = 14.258657284905194;
+export const COMPANY_LNG = 121.11928280273479;
+export const DEFAULT_RADIUS_M = 100;
+export const ADMIN_SHORTCUT_CODE = "11223344";
+
+// ===== Helpers =====
+export function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/** Returns "day" or "night" based on PH local hour of a Date (UTC-stored). */
+export function shiftFromTimeIn(d: Date): "day" | "night" {
+  // Convert to PH (UTC+8)
+  const ph = new Date(d.getTime() + (8 * 60 + d.getTimezoneOffset()) * 60000);
+  const h = ph.getHours();
+  // 5:00 AM – 5:59 PM => Day, else Night
+  return h >= 5 && h < 18 ? "day" : "night";
+}
+
+export function nowInPH(): Date {
+  const d = new Date();
+  return new Date(d.getTime() + (8 * 60 + d.getTimezoneOffset()) * 60000);
+}
+
+export function formatPH(d: Date | string, opts?: Intl.DateTimeFormatOptions): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    ...opts,
+  }).format(date);
+}

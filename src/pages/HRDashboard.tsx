@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { supabase, type Profile, type AttendanceRow, type Announcement } from "@/lib/supabase";
+import { supabase, formatPH, type Profile, type AttendanceRow, type Announcement, type KioskSettings } from "@/lib/supabase";
 import { AppHeader } from "@/components/AppHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Search, UserPlus, Users, CalendarCheck, Megaphone, Trash2, Plus } from "lucide-react";
+import { Search, UserPlus, Users, CalendarCheck, Megaphone, Trash2, Plus, Settings as SettingsIcon, Coffee, Stethoscope } from "lucide-react";
 import { format, subDays, startOfDay } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -20,19 +21,22 @@ export default function HRDashboard() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [settings, setSettings] = useState<KioskSettings | null>(null);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
 
   const loadAll = async () => {
-    const [p, a, ann] = await Promise.all([
-      supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved").order("created_at", { ascending: false }),
+    const [p, a, ann, s] = await Promise.all([
+      supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position").order("created_at", { ascending: false }),
       supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(500),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
+      supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(),
     ]);
     setProfiles((p.data as Profile[]) ?? []);
     setAttendance((a.data as AttendanceRow[]) ?? []);
     setAnnouncements((ann.data as Announcement[]) ?? []);
+    setSettings((s.data as KioskSettings) ?? null);
   };
 
   useEffect(() => { loadAll(); }, []);
@@ -89,11 +93,12 @@ export default function HRDashboard() {
         </div>
 
         <Tabs defaultValue="employees" className="space-y-4">
-          <TabsList className="rounded-2xl">
+          <TabsList className="rounded-2xl flex-wrap h-auto">
             <TabsTrigger value="employees" className="rounded-xl">Employees</TabsTrigger>
             <TabsTrigger value="attendance" className="rounded-xl">Attendance</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-xl">Analytics</TabsTrigger>
             <TabsTrigger value="announcements" className="rounded-xl">Announcements</TabsTrigger>
+            <TabsTrigger value="settings" className="rounded-xl">Settings</TabsTrigger>
           </TabsList>
 
           {/* EMPLOYEES */}
@@ -142,30 +147,18 @@ export default function HRDashboard() {
             </div>
           </TabsContent>
 
-          {/* ATTENDANCE */}
+          {/* ATTENDANCE — daily pairs with shift, late, OT */}
           <TabsContent value="attendance" className="space-y-4">
             <div className="flex flex-wrap gap-3">
               <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="rounded-xl max-w-[200px]" />
-              <Input placeholder="Filter by Company ID" value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className="rounded-xl max-w-[260px]" />
+              <Input placeholder="Filter by Company ID or name" value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className="rounded-xl max-w-[260px]" />
               <Button variant="outline" onClick={() => { setDateFilter(""); setEmployeeFilter(""); }} className="rounded-xl">Clear</Button>
             </div>
-            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left">
-                  <tr><th className="p-4">Company ID</th><th className="p-4">Type</th><th className="p-4">Timestamp</th></tr>
-                </thead>
-                <tbody>
-                  {filteredAttendance.map(r => (
-                    <tr key={r.id} className="border-t border-border hover:bg-muted/30">
-                      <td className="p-4 font-mono">{r.company_id}</td>
-                      <td className="p-4"><Badge className={`rounded-lg ${r.type === "time_in" ? "bg-success/15 text-success" : "bg-destructive/10 text-destructive"}`} variant="secondary">{r.type}</Badge></td>
-                      <td className="p-4">{format(new Date(r.timestamp), "PPp")}</td>
-                    </tr>
-                  ))}
-                  {filteredAttendance.length === 0 && (<tr><td colSpan={3} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>)}
-                </tbody>
-              </table>
-            </div>
+            <AttendanceTable
+              attendance={filteredAttendance}
+              profiles={profiles}
+              settings={settings}
+            />
           </TabsContent>
 
           {/* ANALYTICS */}
@@ -211,6 +204,10 @@ export default function HRDashboard() {
               {announcements.length === 0 && <p className="text-muted-foreground">No announcements yet.</p>}
             </div>
           </TabsContent>
+          {/* SETTINGS */}
+          <TabsContent value="settings">
+            <SettingsPanel settings={settings} onSaved={loadAll} />
+          </TabsContent>
         </Tabs>
       </main>
     </div>
@@ -231,7 +228,7 @@ function Kpi({ label, value, icon }: { label: string; value: any; icon: React.Re
 
 function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ company_id: "", full_name: "", password: "", role: "Employee", dob: "" });
+  const [form, setForm] = useState({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "" });
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -243,13 +240,15 @@ function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
       password: form.password,
       role: form.role,
       dob: form.dob || null,
+      email: form.email.trim() || null,
+      position: form.position.trim() || null,
       is_approved: true,
     });
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success("Employee added");
     setOpen(false);
-    setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "" });
+    setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "" });
     onAdded();
   };
 
@@ -263,6 +262,8 @@ function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
         <div className="space-y-3">
           <Field label="Company ID"><Input value={form.company_id} onChange={e => setForm({ ...form, company_id: e.target.value })} /></Field>
           <Field label="Full name"><Input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
+          <Field label="Position"><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="e.g. Operator" /></Field>
           <Field label="Password"><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
           <Field label="Role"><Input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} placeholder="Employee / HR / Admin" /></Field>
           <Field label="Date of birth"><Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></Field>
@@ -304,4 +305,190 @@ function AnnouncementForm({ onAdded }: { onAdded: () => void }) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+}
+
+function AttendanceTable({ attendance, profiles, settings }: { attendance: AttendanceRow[]; profiles: Profile[]; settings: KioskSettings | null }) {
+  const profileMap = useMemo(() => {
+    const m: Record<string, Profile> = {};
+    profiles.forEach(p => { m[p.company_id] = p; });
+    return m;
+  }, [profiles]);
+
+  const grouped = useMemo(() => {
+    const map: Record<string, { date: string; companyId: string; in?: AttendanceRow; out?: AttendanceRow }> = {};
+    attendance.forEach(r => {
+      const date = formatPH(r.timestamp, { year: "numeric", month: "2-digit", day: "2-digit" });
+      const key = `${r.company_id}|${date}`;
+      map[key] = map[key] ?? { date, companyId: r.company_id };
+      if (r.type === "time_in") map[key].in = r;
+      else map[key].out = r;
+    });
+    return Object.values(map).sort((a, b) => (b.date + b.companyId).localeCompare(a.date + a.companyId));
+  }, [attendance]);
+
+  const lateDay = settings?.late_threshold_day ?? "06:05";
+  const lateNight = settings?.late_threshold_night ?? "18:05";
+
+  const isLate = (row: AttendanceRow): boolean => {
+    if (!row) return false;
+    const t = formatPH(row.timestamp, { hour: "2-digit", minute: "2-digit", hour12: false });
+    const threshold = row.shift === "night" ? lateNight : lateDay;
+    return t > threshold;
+  };
+
+  const computeOT = (g: { in?: AttendanceRow; out?: AttendanceRow }): string => {
+    if (!g.in || !g.out) return "—";
+    const outDate = new Date(g.out.timestamp);
+    const inDate = new Date(g.in.timestamp);
+    const shift = g.in.shift;
+    const inPHHour = parseInt(formatPH(inDate, { hour: "2-digit", hour12: false }));
+    const endPH = new Date(inDate);
+    if (shift === "day") {
+      endPH.setUTCHours(18 - 8, 0, 0, 0);
+      if (inPHHour >= 18) endPH.setUTCDate(endPH.getUTCDate() + 1);
+    } else {
+      endPH.setUTCHours(6 - 8, 0, 0, 0);
+      endPH.setUTCDate(endPH.getUTCDate() + 1);
+    }
+    const diffMin = Math.round((outDate.getTime() - endPH.getTime()) / 60000);
+    if (diffMin <= 0) return "—";
+    const h = Math.floor(diffMin / 60); const m = diffMin % 60;
+    return `${h}h ${m}m`;
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
+      <table className="w-full text-sm min-w-[800px]">
+        <thead className="bg-muted/50 text-left">
+          <tr>
+            <th className="p-4">Date</th>
+            <th className="p-4">Employee</th>
+            <th className="p-4">Position</th>
+            <th className="p-4">Time In</th>
+            <th className="p-4">Time Out</th>
+            <th className="p-4">Shift</th>
+            <th className="p-4">Status</th>
+            <th className="p-4">Overtime</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grouped.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>}
+          {grouped.map(g => {
+            const p = profileMap[g.companyId];
+            const late = g.in ? isLate(g.in) : false;
+            return (
+              <tr key={`${g.companyId}-${g.date}`} className="border-t border-border hover:bg-muted/30">
+                <td className="p-4">{g.date}</td>
+                <td className="p-4 font-medium">{p?.full_name ?? g.companyId}</td>
+                <td className="p-4 text-muted-foreground">{p?.position ?? "—"}</td>
+                <td className="p-4">{g.in ? formatPH(g.in.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
+                <td className="p-4">{g.out ? formatPH(g.out.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
+                <td className="p-4">{g.in?.shift ? <Badge variant="secondary" className="rounded-lg capitalize">{g.in.shift}</Badge> : "—"}</td>
+                <td className="p-4">
+                  {late
+                    ? <Badge className="rounded-lg bg-warning/20 text-foreground border border-warning/40">Late</Badge>
+                    : g.in ? <Badge className="rounded-lg bg-success/15 text-success">On time</Badge> : <Badge variant="secondary" className="rounded-lg">—</Badge>}
+                </td>
+                <td className="p-4 font-mono text-xs">{computeOT(g)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; onSaved: () => void }) {
+  const [form, setForm] = useState<Partial<KioskSettings>>({
+    canteen_status: settings?.canteen_status ?? "open",
+    clinic_status: settings?.clinic_status ?? "open",
+    late_threshold_day: settings?.late_threshold_day ?? "06:05",
+    late_threshold_night: settings?.late_threshold_night ?? "18:05",
+    geofence_radius_m: settings?.geofence_radius_m ?? 100,
+    geofence_lat: settings?.geofence_lat ?? 14.258657284905194,
+    geofence_lng: settings?.geofence_lng ?? 121.11928280273479,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (settings) setForm({
+      canteen_status: settings.canteen_status,
+      clinic_status: settings.clinic_status,
+      late_threshold_day: settings.late_threshold_day,
+      late_threshold_night: settings.late_threshold_night,
+      geofence_radius_m: settings.geofence_radius_m,
+      geofence_lat: settings.geofence_lat,
+      geofence_lng: settings.geofence_lng,
+    });
+  }, [settings]);
+
+  const save = async () => {
+    setSaving(true);
+    const payload = { ...form, updated_at: new Date().toISOString() };
+    const { error } = settings
+      ? await supabase.from("kiosk_settings").update(payload).eq("id", settings.id)
+      : await supabase.from("kiosk_settings").insert(payload);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Settings saved.");
+    onSaved();
+  };
+
+  return (
+    <div className="grid md:grid-cols-2 gap-6">
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold flex items-center gap-2"><SettingsIcon className="h-4 w-4 text-primary" /> Operational Status</h3>
+        <div className="space-y-3">
+          <StatusRow icon={<Coffee className="h-4 w-4" />} label="Canteen"
+            value={form.canteen_status as any} onChange={v => setForm({ ...form, canteen_status: v })} />
+          <StatusRow icon={<Stethoscope className="h-4 w-4" />} label="Clinic"
+            value={form.clinic_status as any} onChange={v => setForm({ ...form, clinic_status: v })} />
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold">Late Policy (PH 24h)</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Day shift threshold</Label>
+            <Input type="time" value={form.late_threshold_day as string} onChange={e => setForm({ ...form, late_threshold_day: e.target.value })} className="rounded-xl" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Night shift threshold</Label>
+            <Input type="time" value={form.late_threshold_night as string} onChange={e => setForm({ ...form, late_threshold_night: e.target.value })} className="rounded-xl" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4 md:col-span-2">
+        <h3 className="font-bold">Geofence</h3>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div className="space-y-1.5"><Label>Latitude</Label><Input type="number" step="any" value={form.geofence_lat ?? 0} onChange={e => setForm({ ...form, geofence_lat: parseFloat(e.target.value) })} className="rounded-xl" /></div>
+          <div className="space-y-1.5"><Label>Longitude</Label><Input type="number" step="any" value={form.geofence_lng ?? 0} onChange={e => setForm({ ...form, geofence_lng: parseFloat(e.target.value) })} className="rounded-xl" /></div>
+          <div className="space-y-1.5"><Label>Radius (meters)</Label><Input type="number" value={form.geofence_radius_m ?? 100} onChange={e => setForm({ ...form, geofence_radius_m: parseInt(e.target.value || "0") })} className="rounded-xl" /></div>
+        </div>
+      </div>
+
+      <div className="md:col-span-2">
+        <Button onClick={save} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground hover:opacity-90 shadow-soft">{saving ? "Saving…" : "Save Settings"}</Button>
+      </div>
+    </div>
+  );
+}
+
+function StatusRow({ icon, label, value, onChange }: { icon: React.ReactNode; label: string; value: "open"|"closed"|"holiday"; onChange: (v: "open"|"closed"|"holiday") => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 text-sm font-medium"><span className="text-primary">{icon}</span>{label}</div>
+      <Select value={value} onValueChange={(v) => onChange(v as any)}>
+        <SelectTrigger className="rounded-xl w-40"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="open">Open</SelectItem>
+          <SelectItem value="closed">Closed</SelectItem>
+          <SelectItem value="holiday">Holiday</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }
