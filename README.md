@@ -7,7 +7,7 @@
 ## 📷 System Preview
 
 ### 🏭 Factory Background
-![Factory](https://raw.githubusercontent.com/nashmagbanua/nutribev-hub/main/background.webp)
+![Factory](https://github.com/nashmagbanua/nutribev-hub/blob/main/background.webp)
 
 ---
 
