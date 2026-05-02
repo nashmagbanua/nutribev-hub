@@ -204,6 +204,10 @@ export default function HRDashboard() {
               {announcements.length === 0 && <p className="text-muted-foreground">No announcements yet.</p>}
             </div>
           </TabsContent>
+          {/* SETTINGS */}
+          <TabsContent value="settings">
+            <SettingsPanel settings={settings} onSaved={loadAll} />
+          </TabsContent>
         </Tabs>
       </main>
     </div>
