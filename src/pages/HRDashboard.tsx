@@ -22,21 +22,30 @@ export default function HRDashboard() {
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [settings, setSettings] = useState<KioskSettings | null>(null);
+  const [visitors, setVisitors] = useState<any[]>([]);
+  const [clinicReqs, setClinicReqs] = useState<any[]>([]);
+  const [holidays, setHolidays] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
 
   const loadAll = async () => {
-    const [p, a, ann, s] = await Promise.all([
+    const [p, a, ann, s, v, c, h] = await Promise.all([
       supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position").order("created_at", { ascending: false }),
       supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(500),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
       supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(),
+      supabase.from("visitors").select("*").order("time_in", { ascending: false }).limit(200),
+      supabase.from("clinic_requests").select("*").order("created_at", { ascending: false }).limit(200),
+      supabase.from("holidays").select("*").order("date", { ascending: true }),
     ]);
     setProfiles((p.data as Profile[]) ?? []);
     setAttendance((a.data as AttendanceRow[]) ?? []);
     setAnnouncements((ann.data as Announcement[]) ?? []);
     setSettings((s.data as KioskSettings) ?? null);
+    setVisitors(v.data ?? []);
+    setClinicReqs(c.data ?? []);
+    setHolidays(h.data ?? []);
   };
 
   useEffect(() => { loadAll(); }, []);
