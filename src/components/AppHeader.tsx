@@ -24,6 +24,12 @@ export function AppHeader() {
           <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="gap-2">
             <LayoutDashboard className="h-4 w-4" /><span className="hidden sm:inline">Dashboard</span>
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/clinic")} className="gap-2">
+            <Stethoscope className="h-4 w-4" /><span className="hidden sm:inline">Clinic</span>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/mobile-punch")} className="gap-2">
+            <Smartphone className="h-4 w-4" /><span className="hidden md:inline">Mobile Punch</span>
+          </Button>
           {isHR && (
             <Button variant="ghost" size="sm" onClick={() => navigate("/hr")} className="gap-2">
               <Users className="h-4 w-4" /><span className="hidden sm:inline">HR Console</span>
