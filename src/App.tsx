@@ -30,6 +30,8 @@ const App = () => (
               <Route path="/register" element={<Register />} />
               <Route path="/attendance-list" element={<AttendanceList />} />
               <Route path="/dashboard" element={<ProtectedRoute><EmployeeDashboard /></ProtectedRoute>} />
+              <Route path="/clinic" element={<ProtectedRoute><Clinic /></ProtectedRoute>} />
+              <Route path="/mobile-punch" element={<ProtectedRoute><MobilePunch /></ProtectedRoute>} />
               <Route path="/hr" element={<ProtectedRoute roles={["HR", "Admin"]}><HRDashboard /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
