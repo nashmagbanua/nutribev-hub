@@ -27,6 +27,7 @@ export type AttendanceRow = {
   timestamp: string;
   type: "time_in" | "time_out";
   shift?: "day" | "night" | null;
+  source?: "kiosk" | "mobile_fallback" | null;
 };
 
 export type Announcement = {
