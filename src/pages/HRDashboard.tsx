@@ -217,6 +217,15 @@ export default function HRDashboard() {
             </div>
           </TabsContent>
           {/* SETTINGS */}
+          <TabsContent value="visitors">
+            <VisitorsTable rows={visitors} />
+          </TabsContent>
+          <TabsContent value="clinic">
+            <ClinicTable rows={clinicReqs} onChanged={loadAll} />
+          </TabsContent>
+          <TabsContent value="holidays">
+            <HolidaysPanel rows={holidays} onChanged={loadAll} />
+          </TabsContent>
           <TabsContent value="settings">
             <SettingsPanel settings={settings} onSaved={loadAll} />
           </TabsContent>
