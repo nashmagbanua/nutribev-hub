@@ -83,6 +83,26 @@ export const COMPANY_LAT = 14.258657284905194;
 export const COMPANY_LNG = 121.11928280273479;
 export const DEFAULT_RADIUS_M = 100;
 export const ADMIN_SHORTCUT_CODE = "11223344";
+export const VISITOR_CODE = "12345";
+
+/** Returns YYYY-MM-DD in PH time. */
+export function phDateKey(d: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(d);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Returns "MM-DD" in PH time, used to match birthdays regardless of year. */
+export function phMonthDay(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d + "T00:00:00") : d;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("month")}-${get("day")}`;
+}
 
 // ===== Helpers =====
 export function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
