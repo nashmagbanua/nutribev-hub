@@ -42,12 +42,40 @@ export type KioskSettings = {
   id: string;
   canteen_status: "open" | "closed" | "holiday";
   clinic_status: "open" | "closed" | "holiday";
-  late_threshold_day: string;   // "06:05"
-  late_threshold_night: string; // "18:05"
+  late_threshold_day: string;
+  late_threshold_night: string;
   geofence_radius_m: number;
   geofence_lat: number;
   geofence_lng: number;
+  holiday_mode: "allow" | "disable"; // when a holiday matches, allow logs or disable kiosk
   updated_at: string;
+};
+
+export type Visitor = {
+  id: string;
+  full_name: string;
+  company: string | null;
+  purpose: string | null;
+  person_to_visit: string | null;
+  time_in: string;
+};
+
+export type ClinicRequest = {
+  id: string;
+  company_id: string;
+  employee_name: string;
+  medicine: string;
+  pickup_time: string | null;
+  status: "pending" | "available" | "follow_up";
+  notes: string | null;
+  created_at: string;
+};
+
+export type Holiday = {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  active: boolean;
 };
 
 // ===== Constants =====
