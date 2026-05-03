@@ -11,6 +11,8 @@ import Kiosk from "./pages/Kiosk";
 import AttendanceList from "./pages/AttendanceList";
 import EmployeeDashboard from "./pages/EmployeeDashboard";
 import HRDashboard from "./pages/HRDashboard";
+import Clinic from "./pages/Clinic";
+import MobilePunch from "./pages/MobilePunch";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
