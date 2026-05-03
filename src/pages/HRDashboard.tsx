@@ -22,21 +22,30 @@ export default function HRDashboard() {
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [settings, setSettings] = useState<KioskSettings | null>(null);
+  const [visitors, setVisitors] = useState<any[]>([]);
+  const [clinicReqs, setClinicReqs] = useState<any[]>([]);
+  const [holidays, setHolidays] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
 
   const loadAll = async () => {
-    const [p, a, ann, s] = await Promise.all([
+    const [p, a, ann, s, v, c, h] = await Promise.all([
       supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position").order("created_at", { ascending: false }),
       supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(500),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
       supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(),
+      supabase.from("visitors").select("*").order("time_in", { ascending: false }).limit(200),
+      supabase.from("clinic_requests").select("*").order("created_at", { ascending: false }).limit(200),
+      supabase.from("holidays").select("*").order("date", { ascending: true }),
     ]);
     setProfiles((p.data as Profile[]) ?? []);
     setAttendance((a.data as AttendanceRow[]) ?? []);
     setAnnouncements((ann.data as Announcement[]) ?? []);
     setSettings((s.data as KioskSettings) ?? null);
+    setVisitors(v.data ?? []);
+    setClinicReqs(c.data ?? []);
+    setHolidays(h.data ?? []);
   };
 
   useEffect(() => { loadAll(); }, []);
@@ -98,6 +107,9 @@ export default function HRDashboard() {
             <TabsTrigger value="attendance" className="rounded-xl">Attendance</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-xl">Analytics</TabsTrigger>
             <TabsTrigger value="announcements" className="rounded-xl">Announcements</TabsTrigger>
+            <TabsTrigger value="visitors" className="rounded-xl">Visitors</TabsTrigger>
+            <TabsTrigger value="clinic" className="rounded-xl">Clinic</TabsTrigger>
+            <TabsTrigger value="holidays" className="rounded-xl">Holidays</TabsTrigger>
             <TabsTrigger value="settings" className="rounded-xl">Settings</TabsTrigger>
           </TabsList>
 
@@ -205,6 +217,15 @@ export default function HRDashboard() {
             </div>
           </TabsContent>
           {/* SETTINGS */}
+          <TabsContent value="visitors">
+            <VisitorsTable rows={visitors} />
+          </TabsContent>
+          <TabsContent value="clinic">
+            <ClinicTable rows={clinicReqs} onChanged={loadAll} />
+          </TabsContent>
+          <TabsContent value="holidays">
+            <HolidaysPanel rows={holidays} onChanged={loadAll} />
+          </TabsContent>
           <TabsContent value="settings">
             <SettingsPanel settings={settings} onSaved={loadAll} />
           </TabsContent>
@@ -408,6 +429,7 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
     geofence_radius_m: settings?.geofence_radius_m ?? 100,
     geofence_lat: settings?.geofence_lat ?? 14.258657284905194,
     geofence_lng: settings?.geofence_lng ?? 121.11928280273479,
+    holiday_mode: settings?.holiday_mode ?? "allow",
   });
   const [saving, setSaving] = useState(false);
 
@@ -420,6 +442,7 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
       geofence_radius_m: settings.geofence_radius_m,
       geofence_lat: settings.geofence_lat,
       geofence_lng: settings.geofence_lng,
+      holiday_mode: settings.holiday_mode ?? "allow",
     });
   }, [settings]);
 
@@ -461,12 +484,26 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
         </div>
       </div>
 
-      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4 md:col-span-2">
-        <h3 className="font-bold">Geofence</h3>
-        <div className="grid sm:grid-cols-3 gap-3">
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold">Holiday Behavior</h3>
+        <div className="space-y-1.5">
+          <Label>On Philippine Holidays</Label>
+          <Select value={form.holiday_mode as string} onValueChange={(v) => setForm({ ...form, holiday_mode: v as any })}>
+            <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="allow">Allow Time In/Out</SelectItem>
+              <SelectItem value="disable">Disable kiosk</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold">Geofence (validation only — UI hidden on kiosk)</h3>
+        <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5"><Label>Latitude</Label><Input type="number" step="any" value={form.geofence_lat ?? 0} onChange={e => setForm({ ...form, geofence_lat: parseFloat(e.target.value) })} className="rounded-xl" /></div>
           <div className="space-y-1.5"><Label>Longitude</Label><Input type="number" step="any" value={form.geofence_lng ?? 0} onChange={e => setForm({ ...form, geofence_lng: parseFloat(e.target.value) })} className="rounded-xl" /></div>
-          <div className="space-y-1.5"><Label>Radius (meters)</Label><Input type="number" value={form.geofence_radius_m ?? 100} onChange={e => setForm({ ...form, geofence_radius_m: parseInt(e.target.value || "0") })} className="rounded-xl" /></div>
+          <div className="space-y-1.5"><Label>Radius (m)</Label><Input type="number" value={form.geofence_radius_m ?? 100} onChange={e => setForm({ ...form, geofence_radius_m: parseInt(e.target.value || "0") })} className="rounded-xl" /></div>
         </div>
       </div>
 
@@ -476,6 +513,120 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
     </div>
   );
 }
+
+function VisitorsTable({ rows }: { rows: any[] }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
+      <table className="w-full text-sm min-w-[700px]">
+        <thead className="bg-muted/50 text-left">
+          <tr>
+            <th className="p-4">Time In</th><th className="p-4">Name</th><th className="p-4">Company</th>
+            <th className="p-4">Purpose</th><th className="p-4">Person to Visit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No visitors logged.</td></tr>}
+          {rows.map(v => (
+            <tr key={v.id} className="border-t border-border hover:bg-muted/30">
+              <td className="p-4 font-mono text-xs">{formatPH(v.time_in, { dateStyle: "short", timeStyle: "short" } as any)}</td>
+              <td className="p-4 font-medium">{v.full_name}</td>
+              <td className="p-4">{v.company ?? "—"}</td>
+              <td className="p-4">{v.purpose ?? "—"}</td>
+              <td className="p-4">{v.person_to_visit ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ClinicTable({ rows, onChanged }: { rows: any[]; onChanged: () => void }) {
+  const update = async (id: string, status: string) => {
+    const { error } = await supabase.from("clinic_requests").update({ status }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Updated"); onChanged();
+  };
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
+      <table className="w-full text-sm min-w-[700px]">
+        <thead className="bg-muted/50 text-left">
+          <tr>
+            <th className="p-4">Requested</th><th className="p-4">Employee</th><th className="p-4">Medicine</th>
+            <th className="p-4">Pickup</th><th className="p-4">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No requests.</td></tr>}
+          {rows.map(r => (
+            <tr key={r.id} className="border-t border-border hover:bg-muted/30">
+              <td className="p-4 text-xs">{format(new Date(r.created_at), "PPp")}</td>
+              <td className="p-4 font-medium">{r.employee_name}</td>
+              <td className="p-4">{r.medicine}</td>
+              <td className="p-4">{r.pickup_time ? format(new Date(r.pickup_time), "PPp") : "—"}</td>
+              <td className="p-4">
+                <Select value={r.status} onValueChange={(v) => update(r.id, v)}>
+                  <SelectTrigger className="rounded-xl w-44"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="available">Available</SelectItem>
+                    <SelectItem value="follow_up">To Follow Up</SelectItem>
+                  </SelectContent>
+                </Select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function HolidaysPanel({ rows, onChanged }: { rows: any[]; onChanged: () => void }) {
+  const [form, setForm] = useState({ name: "", date: "" });
+  const add = async () => {
+    if (!form.name || !form.date) { toast.error("Name and date required"); return; }
+    const { error } = await supabase.from("holidays").insert({ name: form.name, date: form.date, active: true });
+    if (error) return toast.error(error.message);
+    toast.success("Holiday added"); setForm({ name: "", date: "" }); onChanged();
+  };
+  const toggle = async (id: string, active: boolean) => {
+    await supabase.from("holidays").update({ active }).eq("id", id); onChanged();
+  };
+  const remove = async (id: string) => {
+    await supabase.from("holidays").delete().eq("id", id); onChanged();
+  };
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-5 space-y-3">
+        <h3 className="font-bold">Add Holiday</h3>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <Input placeholder="Holiday name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-xl" />
+          <Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="rounded-xl" />
+          <Button onClick={add} className="rounded-xl gradient-primary text-primary-foreground"><Plus className="h-4 w-4 mr-2" />Add</Button>
+        </div>
+        <p className="text-xs text-muted-foreground">Built-in fixed PH Regular Holidays are auto-detected; add movable holidays (e.g. Eid'l Fitr, Maundy Thursday) here.</p>
+      </div>
+      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left"><tr><th className="p-4">Date</th><th className="p-4">Name</th><th className="p-4">Active</th><th className="p-4"></th></tr></thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No custom holidays.</td></tr>}
+            {rows.map(h => (
+              <tr key={h.id} className="border-t border-border">
+                <td className="p-4 font-mono">{h.date}</td>
+                <td className="p-4 font-medium">{h.name}</td>
+                <td className="p-4"><Switch checked={h.active} onCheckedChange={(v) => toggle(h.id, v)} /></td>
+                <td className="p-4 text-right"><Button size="icon" variant="ghost" onClick={() => remove(h.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 
 function StatusRow({ icon, label, value, onChange }: { icon: React.ReactNode; label: string; value: "open"|"closed"|"holiday"; onChange: (v: "open"|"closed"|"holiday") => void }) {
   return (

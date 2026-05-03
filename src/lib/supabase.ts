@@ -27,6 +27,7 @@ export type AttendanceRow = {
   timestamp: string;
   type: "time_in" | "time_out";
   shift?: "day" | "night" | null;
+  source?: "kiosk" | "mobile_fallback" | null;
 };
 
 export type Announcement = {
@@ -42,12 +43,40 @@ export type KioskSettings = {
   id: string;
   canteen_status: "open" | "closed" | "holiday";
   clinic_status: "open" | "closed" | "holiday";
-  late_threshold_day: string;   // "06:05"
-  late_threshold_night: string; // "18:05"
+  late_threshold_day: string;
+  late_threshold_night: string;
   geofence_radius_m: number;
   geofence_lat: number;
   geofence_lng: number;
+  holiday_mode: "allow" | "disable"; // when a holiday matches, allow logs or disable kiosk
   updated_at: string;
+};
+
+export type Visitor = {
+  id: string;
+  full_name: string;
+  company: string | null;
+  purpose: string | null;
+  person_to_visit: string | null;
+  time_in: string;
+};
+
+export type ClinicRequest = {
+  id: string;
+  company_id: string;
+  employee_name: string;
+  medicine: string;
+  pickup_time: string | null;
+  status: "pending" | "available" | "follow_up";
+  notes: string | null;
+  created_at: string;
+};
+
+export type Holiday = {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  active: boolean;
 };
 
 // ===== Constants =====
@@ -55,6 +84,26 @@ export const COMPANY_LAT = 14.258657284905194;
 export const COMPANY_LNG = 121.11928280273479;
 export const DEFAULT_RADIUS_M = 100;
 export const ADMIN_SHORTCUT_CODE = "11223344";
+export const VISITOR_CODE = "12345";
+
+/** Returns YYYY-MM-DD in PH time. */
+export function phDateKey(d: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(d);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Returns "MM-DD" in PH time, used to match birthdays regardless of year. */
+export function phMonthDay(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d + "T00:00:00") : d;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("month")}-${get("day")}`;
+}
 
 // ===== Helpers =====
 export function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {

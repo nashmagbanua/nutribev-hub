@@ -11,6 +11,8 @@ import Kiosk from "./pages/Kiosk";
 import AttendanceList from "./pages/AttendanceList";
 import EmployeeDashboard from "./pages/EmployeeDashboard";
 import HRDashboard from "./pages/HRDashboard";
+import Clinic from "./pages/Clinic";
+import MobilePunch from "./pages/MobilePunch";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -28,6 +30,8 @@ const App = () => (
               <Route path="/register" element={<Register />} />
               <Route path="/attendance-list" element={<AttendanceList />} />
               <Route path="/dashboard" element={<ProtectedRoute><EmployeeDashboard /></ProtectedRoute>} />
+              <Route path="/clinic" element={<ProtectedRoute><Clinic /></ProtectedRoute>} />
+              <Route path="/mobile-punch" element={<ProtectedRoute><MobilePunch /></ProtectedRoute>} />
               <Route path="/hr" element={<ProtectedRoute roles={["HR", "Admin"]}><HRDashboard /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
