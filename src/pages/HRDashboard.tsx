@@ -107,6 +107,9 @@ export default function HRDashboard() {
             <TabsTrigger value="attendance" className="rounded-xl">Attendance</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-xl">Analytics</TabsTrigger>
             <TabsTrigger value="announcements" className="rounded-xl">Announcements</TabsTrigger>
+            <TabsTrigger value="visitors" className="rounded-xl">Visitors</TabsTrigger>
+            <TabsTrigger value="clinic" className="rounded-xl">Clinic</TabsTrigger>
+            <TabsTrigger value="holidays" className="rounded-xl">Holidays</TabsTrigger>
             <TabsTrigger value="settings" className="rounded-xl">Settings</TabsTrigger>
           </TabsList>
 
