@@ -277,9 +277,9 @@ function Kpi({ label, value, icon }: { label: string; value: any; icon: React.Re
   );
 }
 
-function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
+function AddEmployeeDialog({ onAdded, areaCodes }: { onAdded: () => void; areaCodes: AreaCode[] }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "" });
+  const [form, setForm] = useState({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "", area_code: "" });
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -293,13 +293,14 @@ function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
       dob: form.dob || null,
       email: form.email.trim() || null,
       position: form.position.trim() || null,
+      area_code: form.area_code || null,
       is_approved: true,
     });
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success("Employee added");
     setOpen(false);
-    setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "" });
+    setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "", area_code: "" });
     onAdded();
   };
 
@@ -317,6 +318,66 @@ function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
           <Field label="Position"><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="e.g. Operator" /></Field>
           <Field label="Password"><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
           <Field label="Role"><Input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} placeholder="Employee / HR / Admin" /></Field>
+          <Field label="Area Code">
+            <Select value={form.area_code} onValueChange={(v) => setForm({ ...form, area_code: v })}>
+              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select area" /></SelectTrigger>
+              <SelectContent>
+                {areaCodes.map(a => <SelectItem key={a.id} value={a.code}>{a.code} — {a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Date of birth"><Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} className="rounded-xl">Cancel</Button>
+          <Button onClick={submit} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground">{saving ? "Saving…" : "Save"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profile; areaCodes: AreaCode[]; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    full_name: employee.full_name, role: employee.role, dob: employee.dob ?? "",
+    email: employee.email ?? "", position: employee.position ?? "", area_code: employee.area_code ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("profiles").update({
+      full_name: form.full_name.trim(),
+      role: form.role,
+      dob: form.dob || null,
+      email: form.email.trim() || null,
+      position: form.position.trim() || null,
+      area_code: form.area_code || null,
+    }).eq("id", employee.id);
+    setSaving(false);
+    if (error) return toast.error(error.message);
+    toast.success("Employee updated"); setOpen(false); onSaved();
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button>
+      </DialogTrigger>
+      <DialogContent className="rounded-2xl">
+        <DialogHeader><DialogTitle>Edit Employee</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <Field label="Full name"><Input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></Field>
+          <Field label="Email"><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
+          <Field label="Position"><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} /></Field>
+          <Field label="Role"><Input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} /></Field>
+          <Field label="Area Code">
+            <Select value={form.area_code} onValueChange={(v) => setForm({ ...form, area_code: v })}>
+              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select area" /></SelectTrigger>
+              <SelectContent>
+                {areaCodes.map(a => <SelectItem key={a.id} value={a.code}>{a.code} — {a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
           <Field label="Date of birth"><Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></Field>
         </div>
         <DialogFooter>
@@ -329,26 +390,36 @@ function AddEmployeeDialog({ onAdded }: { onAdded: () => void }) {
 }
 
 function AnnouncementForm({ onAdded }: { onAdded: () => void }) {
-  const [form, setForm] = useState({ title: "", body: "", image_url: "" });
+  const [form, setForm] = useState({ title: "", body: "" });
+  const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const submit = async () => {
     if (!form.title.trim()) { toast.error("Title is required"); return; }
     setSaving(true);
-    const { error } = await supabase.from("announcements").insert({ ...form, active: true });
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Announcement published");
-    setForm({ title: "", body: "", image_url: "" });
-    onAdded();
+    try {
+      let image_url: string | null = null;
+      if (file) {
+        if (file.size > 2 * 1024 * 1024) { toast.warning("File large — compressing…"); }
+        image_url = await uploadImage("uploads", `announcements/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`, file);
+      }
+      const { error } = await supabase.from("announcements").insert({ ...form, image_url, active: true });
+      if (error) throw error;
+      toast.success("Announcement published");
+      setForm({ title: "", body: "" }); setFile(null);
+      onAdded();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to publish");
+    } finally { setSaving(false); }
   };
   return (
     <div className="rounded-2xl bg-card border border-border shadow-soft p-5 space-y-3">
       <h3 className="font-bold flex items-center gap-2"><Megaphone className="h-4 w-4 text-primary" /> New Announcement</h3>
-      <div className="grid md:grid-cols-3 gap-3">
+      <div className="grid md:grid-cols-2 gap-3">
         <Input placeholder="Title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="rounded-xl" />
-        <Input placeholder="Image URL (optional)" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} className="rounded-xl" />
-        <Input placeholder="Body" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} className="rounded-xl" />
+        <Input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => setFile(e.target.files?.[0] ?? null)} className="rounded-xl" />
       </div>
+      <Textarea placeholder="Body" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} className="rounded-xl" rows={3} />
+      {file && <p className="text-xs text-muted-foreground flex items-center gap-2"><ImageIcon className="h-3 w-3" /> {file.name} — will be auto-compressed (max 800px wide, ~400 KB).</p>}
       <Button onClick={submit} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground"><Plus className="h-4 w-4 mr-2" />{saving ? "Publishing…" : "Publish"}</Button>
     </div>
   );
