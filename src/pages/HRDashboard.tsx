@@ -692,22 +692,22 @@ function VisitorsTable({ rows }: { rows: any[] }) {
 }
 
 function ClinicTable({ rows, onChanged }: { rows: any[]; onChanged: () => void }) {
-  const update = async (id: string, status: string) => {
-    const { error } = await supabase.from("clinic_requests").update({ status }).eq("id", id);
+  const update = async (id: string, patch: any) => {
+    const { error } = await supabase.from("clinic_requests").update(patch).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Updated"); onChanged();
   };
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
-      <table className="w-full text-sm min-w-[700px]">
+      <table className="w-full text-sm min-w-[800px]">
         <thead className="bg-muted/50 text-left">
           <tr>
             <th className="p-4">Requested</th><th className="p-4">Employee</th><th className="p-4">Medicine</th>
-            <th className="p-4">Pickup</th><th className="p-4">Status</th>
+            <th className="p-4">Pickup</th><th className="p-4">Status</th><th className="p-4 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No requests.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No requests.</td></tr>}
           {rows.map(r => (
             <tr key={r.id} className="border-t border-border hover:bg-muted/30">
               <td className="p-4 text-xs">{format(new Date(r.created_at), "PPp")}</td>
@@ -715,19 +715,126 @@ function ClinicTable({ rows, onChanged }: { rows: any[]; onChanged: () => void }
               <td className="p-4">{r.medicine}</td>
               <td className="p-4">{r.pickup_time ? format(new Date(r.pickup_time), "PPp") : "—"}</td>
               <td className="p-4">
-                <Select value={r.status} onValueChange={(v) => update(r.id, v)}>
+                <Select value={r.status} onValueChange={(v) => update(r.id, { status: v, picked_up_at: v === "picked_up" ? new Date().toISOString() : r.picked_up_at })}>
                   <SelectTrigger className="rounded-xl w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="available">Available</SelectItem>
                     <SelectItem value="follow_up">To Follow Up</SelectItem>
+                    <SelectItem value="picked_up">Picked Up</SelectItem>
                   </SelectContent>
                 </Select>
+              </td>
+              <td className="p-4 text-right">
+                <Button size="sm" variant="outline" className="rounded-xl" onClick={() => update(r.id, { status: "picked_up", picked_up_at: new Date().toISOString() })}>
+                  <CheckCircle2 className="h-4 w-4 mr-1" /> Picked Up
+                </Button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function AreaCodesPanel({ rows, onChanged }: { rows: AreaCode[]; onChanged: () => void }) {
+  const [form, setForm] = useState({ code: "", name: "" });
+  const seedDefaults = async () => {
+    const existing = new Set(rows.map(r => r.code));
+    const toInsert = DEFAULT_AREA_CODES.filter(d => !existing.has(d.code)).map(d => ({ ...d, active: true }));
+    if (toInsert.length === 0) { toast.info("All defaults already present."); return; }
+    const { error } = await supabase.from("area_codes").insert(toInsert);
+    if (error) return toast.error(error.message);
+    toast.success(`Seeded ${toInsert.length} area codes.`); onChanged();
+  };
+  const add = async () => {
+    if (!form.code || !form.name) { toast.error("Code and name required"); return; }
+    const { error } = await supabase.from("area_codes").insert({ code: form.code.trim(), name: form.name.trim(), active: true });
+    if (error) return toast.error(error.message);
+    toast.success("Area added"); setForm({ code: "", name: "" }); onChanged();
+  };
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold flex items-center gap-2"><MapPin className="h-4 w-4 text-primary" /> Area Codes</h3>
+          <Button variant="outline" className="rounded-xl" onClick={seedDefaults}>Seed Defaults</Button>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <Input placeholder="Code (e.g. 1008)" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="rounded-xl" />
+          <Input placeholder="Name (e.g. Logistics)" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-xl" />
+          <Button onClick={add} className="rounded-xl gradient-primary text-primary-foreground"><Plus className="h-4 w-4 mr-2" />Add Area</Button>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left">
+            <tr><th className="p-4">Code</th><th className="p-4">Name</th><th className="p-4">Active</th><th className="p-4 text-right">Actions</th></tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No area codes — click "Seed Defaults".</td></tr>}
+            {rows.map(a => (
+              <tr key={a.id} className="border-t border-border">
+                <td className="p-4 font-mono font-bold">{a.code}</td>
+                <td className="p-4 font-medium">{a.name}</td>
+                <td className="p-4"><Switch checked={a.active} onCheckedChange={async (v) => { await supabase.from("area_codes").update({ active: v }).eq("id", a.id); onChanged(); }} /></td>
+                <td className="p-4 text-right">
+                  <Button size="icon" variant="ghost" onClick={async () => {
+                    if (!confirm(`Delete area ${a.code}?`)) return;
+                    const { error } = await supabase.from("area_codes").delete().eq("id", a.id);
+                    if (error) return toast.error(error.message);
+                    toast.success("Deleted"); onChanged();
+                  }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function InboxPanel({ currentId, messages, profiles, onChanged }: { currentId: string; messages: Message[]; profiles: Profile[]; onChanged: () => void }) {
+  const [reply, setReply] = useState<Record<string, string>>({});
+  const incoming = messages.filter(m => m.to_company_id === currentId);
+  const nameOf = (cid: string) => profiles.find(p => p.company_id === cid)?.full_name ?? cid;
+
+  const send = async (toId: string) => {
+    const body = (reply[toId] ?? "").trim();
+    if (!body) return;
+    const { error } = await supabase.from("messages").insert({ from_company_id: currentId, to_company_id: toId, body });
+    if (error) return toast.error(error.message);
+    setReply({ ...reply, [toId]: "" });
+    toast.success("Reply sent"); onChanged();
+  };
+  const markRead = async (id: string) => { await supabase.from("messages").update({ read: true }).eq("id", id); onChanged(); };
+  const remove = async (id: string) => { await supabase.from("messages").delete().eq("id", id); toast.success("Deleted"); onChanged(); };
+
+  return (
+    <div className="space-y-3">
+      <h3 className="font-bold flex items-center gap-2"><InboxIcon className="h-4 w-4 text-primary" /> Inbox ({incoming.filter(m => !m.read).length} unread)</h3>
+      {incoming.length === 0 && <p className="text-muted-foreground text-sm">No messages.</p>}
+      {incoming.map(m => (
+        <div key={m.id} className={`rounded-2xl border bg-card shadow-soft p-4 ${!m.read ? "border-primary/40" : "border-border"}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="font-semibold">{nameOf(m.from_company_id)} <span className="text-xs text-muted-foreground font-mono">({m.from_company_id})</span></div>
+              <div className="text-xs text-muted-foreground">{format(new Date(m.created_at), "PPp")}</div>
+            </div>
+            <div className="flex gap-1">
+              {!m.read && <Button size="sm" variant="ghost" onClick={() => markRead(m.id)}>Mark read</Button>}
+              <Button size="icon" variant="ghost" onClick={() => remove(m.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+            </div>
+          </div>
+          <p className="mt-2 text-sm whitespace-pre-wrap">{m.body}</p>
+          <div className="mt-3 flex gap-2">
+            <Input placeholder="Reply…" value={reply[m.from_company_id] ?? ""} onChange={e => setReply({ ...reply, [m.from_company_id]: e.target.value })} className="rounded-xl" />
+            <Button onClick={() => send(m.from_company_id)} className="rounded-xl gradient-primary text-primary-foreground"><Send className="h-4 w-4" /></Button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
