@@ -26,19 +26,23 @@ export default function HRDashboard() {
   const [visitors, setVisitors] = useState<any[]>([]);
   const [clinicReqs, setClinicReqs] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<any[]>([]);
+  const [areaCodes, setAreaCodes] = useState<AreaCode[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
 
   const loadAll = async () => {
-    const [p, a, ann, s, v, c, h] = await Promise.all([
-      supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position").order("created_at", { ascending: false }),
-      supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(500),
+    const [p, a, ann, s, v, c, h, ac, m] = await Promise.all([
+      supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position, area_code").order("created_at", { ascending: false }),
+      supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(1000),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
       supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(),
       supabase.from("visitors").select("*").order("time_in", { ascending: false }).limit(200),
       supabase.from("clinic_requests").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("holidays").select("*").order("date", { ascending: true }),
+      supabase.from("area_codes").select("*").order("code"),
+      profile ? supabase.from("messages").select("*").or(`to_company_id.eq.${profile.company_id},from_company_id.eq.${profile.company_id}`).order("created_at", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
     ]);
     setProfiles((p.data as Profile[]) ?? []);
     setAttendance((a.data as AttendanceRow[]) ?? []);
@@ -47,9 +51,11 @@ export default function HRDashboard() {
     setVisitors(v.data ?? []);
     setClinicReqs(c.data ?? []);
     setHolidays(h.data ?? []);
+    setAreaCodes((ac.data as AreaCode[]) ?? []);
+    setMessages((m.data as Message[]) ?? []);
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [profile?.company_id]);
 
   const filtered = useMemo(() =>
     profiles.filter(p => !search || p.company_id?.toLowerCase().includes(search.toLowerCase()) || p.full_name?.toLowerCase().includes(search.toLowerCase())),
