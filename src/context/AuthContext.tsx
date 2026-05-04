@@ -4,7 +4,7 @@ import { supabase, type Profile } from "@/lib/supabase";
 type AuthContextType = {
   profile: Profile | null;
   loading: boolean;
-  login: (companyId: string, password: string) => Promise<{ error?: string }>;
+  login: (companyId: string, password: string) => Promise<{ error?: string; profile?: Profile }>;
   logout: () => void;
 };
 
@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (companyId: string, password: string) => {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position")
+      .select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position, area_code")
       .eq("company_id", companyId.trim())
       .eq("password", password)
       .maybeSingle();
@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const p = data as Profile;
     setProfile(p);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
-    return {};
+    return { profile: p };
   };
 
   const logout = () => {
