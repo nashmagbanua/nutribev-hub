@@ -114,6 +114,8 @@ export default function HRDashboard() {
             <TabsTrigger value="attendance" className="rounded-xl">Attendance</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-xl">Analytics</TabsTrigger>
             <TabsTrigger value="announcements" className="rounded-xl">Announcements</TabsTrigger>
+            <TabsTrigger value="areas" className="rounded-xl">Area Codes</TabsTrigger>
+            <TabsTrigger value="inbox" className="rounded-xl">Inbox</TabsTrigger>
             <TabsTrigger value="visitors" className="rounded-xl">Visitors</TabsTrigger>
             <TabsTrigger value="clinic" className="rounded-xl">Clinic</TabsTrigger>
             <TabsTrigger value="holidays" className="rounded-xl">Holidays</TabsTrigger>
@@ -127,17 +129,19 @@ export default function HRDashboard() {
                 <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search by company ID or name…" value={search} onChange={e => setSearch(e.target.value)} className="pl-10 rounded-xl" />
               </div>
-              <AddEmployeeDialog onAdded={loadAll} />
+              <AddEmployeeDialog areaCodes={areaCodes} onAdded={loadAll} />
             </div>
-            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft">
-              <table className="w-full text-sm">
+            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
+              <table className="w-full text-sm min-w-[900px]">
                 <thead className="bg-muted/50 text-left">
                   <tr>
                     <th className="p-4">Employee</th>
                     <th className="p-4">Company ID</th>
                     <th className="p-4">Role</th>
+                    <th className="p-4">Area</th>
                     <th className="p-4">DOB</th>
                     <th className="p-4">Status</th>
+                    <th className="p-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -151,6 +155,7 @@ export default function HRDashboard() {
                       </td>
                       <td className="p-4 font-mono">{p.company_id}</td>
                       <td className="p-4"><Badge variant="secondary" className="rounded-lg">{p.role}</Badge></td>
+                      <td className="p-4 font-mono text-xs">{p.area_code ?? "—"}</td>
                       <td className="p-4">{p.dob ? format(new Date(p.dob), "PP") : "—"}</td>
                       <td className="p-4">
                         <div className="flex items-center gap-3">
@@ -158,9 +163,20 @@ export default function HRDashboard() {
                           <span className={p.is_approved ? "text-success font-medium" : "text-muted-foreground"}>{p.is_approved ? "Approved" : "Pending"}</span>
                         </div>
                       </td>
+                      <td className="p-4 text-right">
+                        <div className="inline-flex gap-1">
+                          <EditEmployeeDialog employee={p} areaCodes={areaCodes} onSaved={loadAll} />
+                          <Button size="icon" variant="ghost" onClick={async () => {
+                            if (!confirm(`Delete ${p.full_name}? This cannot be undone.`)) return;
+                            const { error } = await supabase.from("profiles").delete().eq("id", p.id);
+                            if (error) return toast.error(error.message);
+                            toast.success("Employee deleted"); loadAll();
+                          }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && (<tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No employees found.</td></tr>)}
+                  {filtered.length === 0 && (<tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No employees found.</td></tr>)}
                 </tbody>
               </table>
             </div>
