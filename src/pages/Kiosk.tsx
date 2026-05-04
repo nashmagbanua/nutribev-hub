@@ -7,6 +7,8 @@ import {
   formatPH,
   phDateKey,
   phMonthDay,
+  randomGreeting,
+  isMobileDevice,
   ADMIN_SHORTCUT_CODE,
   VISITOR_CODE,
   COMPANY_LAT,
@@ -16,16 +18,19 @@ import {
   type Profile,
   type Announcement,
   type Holiday,
+  type AreaCode,
+  type AttendanceRow,
 } from "@/lib/supabase";
 import { PH_REGULAR_HOLIDAYS_FIXED } from "@/lib/holidays";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IdleAds } from "@/components/IdleAds";
 import { VisitorDialog } from "@/components/VisitorDialog";
 import { toast } from "sonner";
-import { Clock, Loader2, ShieldCheck, UserPlus, LogIn as LogInIcon, PartyPopper, Sparkles } from "lucide-react";
+import { Clock, Loader2, ShieldCheck, UserPlus, LogIn as LogInIcon, PartyPopper, Sparkles, Users } from "lucide-react";
 import factoryBg from "@/assets/factory-bg.webp";
 import abnLogo from "@/assets/abn-logo.svg";
 import confetti from "canvas-confetti";
@@ -37,42 +42,60 @@ export default function Kiosk() {
   const [code, setCode] = useState("");
   const [now, setNow] = useState(new Date());
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState<{ name: string; action: "in" | "out"; time: string; birthday?: boolean } | null>(null);
+  const [confirm, setConfirm] = useState<{ name: string; action: "in" | "out"; time: string; greeting: string; birthday?: boolean } | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number; acc: number } | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [settings, setSettings] = useState<KioskSettings | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [areaCodes, setAreaCodes] = useState<AreaCode[]>([]);
+  const [areaView, setAreaView] = useState<{ code: AreaCode; people: Profile[]; today: AttendanceRow[] } | null>(null);
   const [showVisitor, setShowVisitor] = useState(false);
   const [idle, setIdle] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const idleTimer = useRef<number | null>(null);
   const navigate = useNavigate();
 
-  // Clock
+  // Mobile redirect → show landing page on phones.
+  useEffect(() => {
+    if (isMobileDevice()) navigate("/welcome", { replace: true });
+  }, [navigate]);
+
+  // Wake lock to keep kiosk screen on 24/7
+  useEffect(() => {
+    let lock: any = null;
+    const acquire = async () => {
+      try { if ("wakeLock" in navigator) lock = await (navigator as any).wakeLock.request("screen"); } catch { /* ignore */ }
+    };
+    acquire();
+    const onVis = () => { if (document.visibilityState === "visible") acquire(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { document.removeEventListener("visibilitychange", onVis); try { lock?.release?.(); } catch { /* ignore */ } };
+  }, []);
+
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Load reference data
   useEffect(() => {
     (async () => {
-      const [s, p, a, h] = await Promise.all([
+      const [s, p, a, h, ac] = await Promise.all([
         supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(),
-        supabase.from("profiles").select("id, company_id, full_name, dob, role, position, avatar_url, is_approved, email").eq("is_approved", true),
+        supabase.from("profiles").select("id, company_id, full_name, dob, role, position, avatar_url, is_approved, email, area_code").eq("is_approved", true),
         supabase.from("announcements").select("*").eq("active", true).order("created_at", { ascending: false }),
         supabase.from("holidays").select("*").eq("active", true),
+        supabase.from("area_codes").select("*").eq("active", true).order("code"),
       ]);
       if (s.data) setSettings(s.data as KioskSettings);
       if (p.data) setProfiles(p.data as Profile[]);
       if (a.data) setAnnouncements(a.data as Announcement[]);
       if (h.data) setHolidays(h.data as Holiday[]);
+      if (ac.data) setAreaCodes(ac.data as AreaCode[]);
     })();
   }, []);
 
-  // Geolocation
   useEffect(() => {
     if (!("geolocation" in navigator)) { setGeoError("Geolocation not supported."); return; }
     const watch = navigator.geolocation.watchPosition(
@@ -83,7 +106,6 @@ export default function Kiosk() {
     return () => navigator.geolocation.clearWatch(watch);
   }, []);
 
-  // Idle detection
   const resetIdle = () => {
     if (idle) setIdle(false);
     if (idleTimer.current) window.clearTimeout(idleTimer.current);
@@ -106,7 +128,6 @@ export default function Kiosk() {
   const distance = coords ? Math.round(haversineMeters(coords.lat, coords.lng, centerLat, centerLng)) : null;
   const inside = distance !== null && distance <= radius;
 
-  // Holiday detection (PH today)
   const todayPH = phDateKey(now);
   const todayMD = todayPH.slice(5);
   const customHoliday = holidays.find(h => h.date === todayPH);
@@ -115,7 +136,6 @@ export default function Kiosk() {
   const holidayMode = settings?.holiday_mode ?? "allow";
   const kioskDisabled = !!holidayName && holidayMode === "disable";
 
-  // Birthdays today
   const birthdayPeople = useMemo(
     () => profiles.filter(p => p.dob && phMonthDay(p.dob) === todayMD),
     [profiles, todayMD]
@@ -130,16 +150,32 @@ export default function Kiosk() {
     setTimeout(() => burst({ x: 0.5, y: 0.5 }), 500);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = code.trim();
-    if (!id) return;
+  const openAreaView = async (areaCode: AreaCode) => {
+    const people = profiles.filter(p => p.area_code === areaCode.code);
+    const startUtc = new Date(`${todayPH}T00:00:00+08:00`).toISOString();
+    const endUtc = new Date(`${todayPH}T23:59:59+08:00`).toISOString();
+    const ids = people.map(p => p.company_id);
+    let today: AttendanceRow[] = [];
+    if (ids.length) {
+      const { data } = await supabase.from("attendance").select("*").in("company_id", ids).gte("timestamp", startUtc).lte("timestamp", endUtc);
+      today = (data as AttendanceRow[]) ?? [];
+    }
+    setAreaView({ code: areaCode, people, today });
+    // Auto-close after 25s
+    setTimeout(() => setAreaView(null), 25000);
+  };
 
-    if (id === ADMIN_SHORTCUT_CODE) { navigate("/attendance-list"); return; }
+  const processCode = async (id: string) => {
+    if (!id) return;
+    if (id === ADMIN_SHORTCUT_CODE) { setCode(""); navigate("/attendance-list"); return; }
     if (id === VISITOR_CODE) { setCode(""); setShowVisitor(true); return; }
 
-    if (kioskDisabled) { toast.error("Kiosk is disabled today (Holiday)."); return; }
-    if (!inside) { toast.error("You are outside company premises."); return; }
+    // Area code lookup (supervisor)
+    const area = areaCodes.find(a => a.code === id);
+    if (area) { setCode(""); await openAreaView(area); return; }
+
+    if (kioskDisabled) { toast.error("Kiosk is disabled today (Holiday)."); setCode(""); return; }
+    if (!inside) { toast.error("You are outside company premises."); setCode(""); return; }
 
     setBusy(true);
     try {
@@ -149,8 +185,8 @@ export default function Kiosk() {
         .eq("company_id", id)
         .maybeSingle();
       if (pErr) throw pErr;
-      if (!profile) { toast.error("Company ID not found."); return; }
-      if (!profile.is_approved) { toast.error("Account pending HR approval."); return; }
+      if (!profile) { toast.error("Company ID not found."); setCode(""); return; }
+      if (!profile.is_approved) { toast.error("Account pending HR approval."); setCode(""); return; }
 
       const startUtc = new Date(`${todayPH}T00:00:00+08:00`).toISOString();
       const endUtc = new Date(`${todayPH}T23:59:59+08:00`).toISOString();
@@ -161,7 +197,7 @@ export default function Kiosk() {
 
       const hasIn = (logs ?? []).some((r: any) => r.type === "time_in");
       const hasOut = (logs ?? []).some((r: any) => r.type === "time_out");
-      if (hasIn && hasOut) { toast.error("Already completed Time In and Time Out for today."); return; }
+      if (hasIn && hasOut) { toast.error("Already completed Time In and Time Out for today."); setCode(""); return; }
 
       const action: "in" | "out" = hasIn ? "out" : "in";
       const ts = new Date();
@@ -178,15 +214,32 @@ export default function Kiosk() {
 
       const isBirthday = action === "in" && profile.dob && phMonthDay(profile.dob) === todayMD;
       const timeStr = formatPH(ts, { hour: "2-digit", minute: "2-digit", hour12: true });
-      setConfirm({ name: profile.full_name, action, time: timeStr, birthday: !!isBirthday });
+      setConfirm({
+        name: profile.full_name, action, time: timeStr,
+        greeting: randomGreeting(action), birthday: !!isBirthday,
+      });
       setCode("");
       if (isBirthday) fireConfetti();
-      setTimeout(() => { setConfirm(null); inputRef.current?.focus(); }, isBirthday ? 6500 : 4000);
+      setTimeout(() => { setConfirm(null); inputRef.current?.focus(); }, isBirthday ? 6500 : 3500);
     } catch (err: any) {
       toast.error(err.message ?? "Failed to record attendance");
+      setCode("");
     } finally {
       setBusy(false);
     }
+  };
+
+  // Auto-submit when input reaches 6 digits, or on Enter
+  const onChange = (v: string) => {
+    const cleaned = v.replace(/\s+/g, "");
+    setCode(cleaned);
+    // Area / shortcut codes are 4–8 chars; employee Company IDs assumed 6 digits.
+    if (/^\d{6}$/.test(cleaned) && !busy) {
+      processCode(cleaned);
+    }
+  };
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") { e.preventDefault(); processCode(code.trim()); }
   };
 
   const dateStr = formatPH(now, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -201,10 +254,9 @@ export default function Kiosk() {
 
       <header className="relative z-10 container flex items-center justify-between py-4">
         <div className="flex items-center gap-3 text-primary-foreground">
-          <img src={abnLogo} alt="AB Nutribev Corp." className="h-12 w-12 rounded-xl bg-white/95 p-1 shadow-soft" />
-          <div className="leading-tight">
+          <img src={abnLogo} alt="AB Nutribev Corp." className="h-12 w-12 drop-shadow-lg" />
+          <div className="leading-tight hidden sm:block">
             <div className="font-bold text-lg">AB Nutribev Corp.</div>
-            <div className="text-xs opacity-90 uppercase tracking-widest">Guard Manifest Kiosk</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -218,7 +270,6 @@ export default function Kiosk() {
         </div>
       </header>
 
-      {/* Holiday banner */}
       {holidayName && (
         <div className="relative z-10 container">
           <div className="rounded-2xl bg-white/15 backdrop-blur-md border border-white/30 text-primary-foreground px-5 py-3 flex items-center gap-3 shadow-elegant animate-fade-in">
@@ -231,88 +282,70 @@ export default function Kiosk() {
         </div>
       )}
 
-      <main className="relative z-10 container pb-10 pt-4 md:pt-8 grid lg:grid-cols-[1.1fr_1fr] gap-8 items-center min-h-[calc(100vh-120px)]">
-        <section className="text-primary-foreground space-y-6">
-          <div>
-            <div className="text-sm opacity-90 uppercase tracking-widest">Philippine Time · Asia/Manila</div>
-            <div className="mt-2 flex items-center gap-3 text-5xl md:text-7xl font-extrabold tabular-nums drop-shadow">
-              <Clock className="h-10 w-10 md:h-14 md:w-14 opacity-90" /><span>{timeStr}</span>
-            </div>
-            <div className="mt-2 text-lg md:text-xl opacity-95">{dateStr}</div>
+      {/* MINIMAL CENTERED LINEAR LAYOUT */}
+      <main className="relative z-10 container pb-10 pt-6 md:pt-10 flex flex-col items-center justify-center text-center min-h-[calc(100vh-160px)]">
+        <div className="text-primary-foreground space-y-2 mb-8">
+          <div className="text-xs md:text-sm opacity-90 uppercase tracking-[0.3em]">Asia/Manila</div>
+          <div className="flex items-center gap-3 justify-center text-5xl md:text-7xl font-extrabold tabular-nums drop-shadow">
+            <Clock className="h-10 w-10 md:h-14 md:w-14 opacity-90" /><span>{timeStr}</span>
           </div>
+          <div className="text-base md:text-lg opacity-95">{dateStr}</div>
+        </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md p-4 space-y-2">
-              <div className="text-sm font-semibold uppercase tracking-wider opacity-90">Facilities</div>
-              <FacilityRow label="Canteen" status={(settings?.canteen_status ?? "open") as Status} />
-              <FacilityRow label="Clinic" status={(settings?.clinic_status ?? "open") as Status} />
-            </div>
-            {birthdayPeople.length > 0 && (
-              <div className="rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider opacity-90">
-                  <PartyPopper className="h-4 w-4" /> Birthdays Today
-                </div>
-                <div className="mt-2 text-sm space-y-1 max-h-24 overflow-hidden">
-                  {birthdayPeople.slice(0, 3).map(p => (
-                    <div key={p.id} className="truncate">🎂 <span className="font-semibold">{p.full_name}</span> {p.position && <span className="opacity-80">— {p.position}</span>}</div>
-                  ))}
-                  {birthdayPeople.length > 3 && <div className="text-xs opacity-80">+{birthdayPeople.length - 3} more</div>}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
+        <div className="w-full max-w-md rounded-2xl bg-white/95 dark:bg-card/95 backdrop-blur-xl shadow-elegant p-6 md:p-8 border border-white/40">
+          <Input
+            ref={inputRef} value={code}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Enter Company ID"
+            inputMode="numeric"
+            maxLength={8}
+            className="h-16 text-3xl text-center rounded-2xl tracking-widest font-bold"
+            autoFocus disabled={busy || kioskDisabled}
+          />
+          {busy && <div className="mt-3 flex items-center justify-center text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing…</div>}
+        </div>
 
-        <section>
-          <div className="rounded-2xl bg-white/95 dark:bg-card/95 backdrop-blur-xl shadow-elegant p-6 md:p-8 border border-white/40">
-            <div className="text-center mb-4">
-              <h2 className="text-2xl font-bold">Tap Your Company ID</h2>
-              <p className="text-sm text-muted-foreground mt-1">Welcome to AB Nutribev Corp.</p>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)}
-                placeholder="Enter or scan Company ID"
-                className="h-16 text-2xl text-center rounded-2xl"
-                autoFocus disabled={busy || kioskDisabled}
-              />
-              <Button type="submit" disabled={busy || !code.trim() || kioskDisabled}
-                className="w-full h-14 rounded-2xl text-lg font-bold gradient-primary text-primary-foreground shadow-elegant hover:opacity-90">
-                {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : "Submit"}
-              </Button>
-              <p className="text-center text-xs text-muted-foreground">Visitor? Enter code <span className="font-mono font-semibold">{VISITOR_CODE}</span></p>
-            </form>
+        {birthdayPeople.length > 0 && (
+          <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md text-primary-foreground px-4 py-2 text-sm border border-white/20">
+            <PartyPopper className="h-4 w-4" /> Birthdays today: {birthdayPeople.slice(0,3).map(p => p.full_name).join(", ")}{birthdayPeople.length > 3 ? ` +${birthdayPeople.length - 3}` : ""}
           </div>
-          {geoError && <p className="mt-3 text-center text-xs text-warning-foreground/90">⚠ {geoError}</p>}
-        </section>
+        )}
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-primary-foreground/90 text-xs">
+          <FacilityChip label="Canteen" status={(settings?.canteen_status ?? "open") as Status} />
+          <FacilityChip label="Clinic" status={(settings?.clinic_status ?? "open") as Status} />
+        </div>
+
+        {geoError && <p className="mt-4 text-center text-xs text-warning/90">⚠ {geoError}</p>}
       </main>
 
-      {/* Confirmation overlay */}
+      {/* Confirmation overlay — centered, bold name, random greeting */}
       {confirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className={`rounded-2xl shadow-elegant border p-8 md:p-10 max-w-lg w-full text-center ${
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm animate-fade-in p-4">
+          <div className={`rounded-2xl shadow-elegant border p-10 md:p-14 max-w-xl w-full text-center ${
             confirm.birthday
               ? "bg-gradient-to-br from-warning/30 via-card to-accent/30 border-warning/40"
               : "bg-card border-border"
           }`}>
-            <div className={`mx-auto h-16 w-16 rounded-full flex items-center justify-center mb-4 ${
+            <div className={`mx-auto h-20 w-20 rounded-full flex items-center justify-center mb-6 ${
               confirm.birthday ? "bg-warning/30 text-warning-foreground" : "bg-success/15 text-success"
             }`}>
-              {confirm.birthday ? <PartyPopper className="h-8 w-8" /> : <ShieldCheck className="h-8 w-8" />}
+              {confirm.birthday ? <PartyPopper className="h-10 w-10" /> : <ShieldCheck className="h-10 w-10" />}
             </div>
             {confirm.birthday ? (
               <>
-                <h3 className="text-2xl md:text-3xl font-extrabold mb-2">Happy Birthday, {confirm.name}! 🎉🎂</h3>
+                <p className="text-lg md:text-xl text-muted-foreground">Happy Birthday,</p>
+                <h3 className="text-4xl md:text-5xl font-extrabold mt-1 mb-3">{confirm.name}! 🎉🎂</h3>
                 <p className="text-lg text-muted-foreground">Thank you for your hard work!</p>
-                <p className="text-sm text-muted-foreground mt-3">Logged IN at {confirm.time}.</p>
+                <p className="text-sm text-muted-foreground mt-4">Logged IN at {confirm.time}.</p>
               </>
             ) : (
               <>
-                <h3 className="text-2xl font-bold mb-2">
-                  {confirm.action === "in" ? `${greet()}, ${confirm.name}.` : `Good job today, ${confirm.name}.`}
-                </h3>
+                <p className="text-lg md:text-xl text-muted-foreground">{confirm.greeting},</p>
+                <h3 className="text-4xl md:text-5xl font-extrabold mt-1 mb-4">{confirm.name}</h3>
                 <p className="text-lg text-muted-foreground">
-                  You are now logged <span className="font-semibold text-foreground">{confirm.action === "in" ? "IN" : "OUT"}</span> at {confirm.time}.
+                  Time {confirm.action === "in" ? "In" : "Out"} recorded at <span className="font-semibold text-foreground">{confirm.time}</span>
                 </p>
               </>
             )}
@@ -322,30 +355,63 @@ export default function Kiosk() {
 
       <VisitorDialog open={showVisitor} onOpenChange={setShowVisitor} />
 
-      {idle && !confirm && !showVisitor && (
+      {/* Area code overlay */}
+      <Dialog open={!!areaView} onOpenChange={(v) => !v && setAreaView(null)}>
+        <DialogContent className="rounded-2xl max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              Area {areaView?.code.code} — {areaView?.code.name}
+            </DialogTitle>
+          </DialogHeader>
+          {areaView && (
+            <div className="max-h-[60vh] overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left sticky top-0">
+                  <tr><th className="p-3">Employee</th><th className="p-3">Status</th><th className="p-3">Time</th></tr>
+                </thead>
+                <tbody>
+                  {areaView.people.length === 0 && <tr><td colSpan={3} className="p-6 text-center text-muted-foreground">No employees assigned to this area.</td></tr>}
+                  {areaView.people
+                    .slice()
+                    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                    .map(p => {
+                      const myLogs = areaView.today.filter(t => t.company_id === p.company_id);
+                      const inLog = myLogs.find(l => l.type === "time_in");
+                      const outLog = myLogs.find(l => l.type === "time_out");
+                      const status = outLog ? "Timed Out" : inLog ? "Timed In" : "Absent";
+                      const statusColor = outLog ? "secondary" : inLog ? "default" : "outline";
+                      const time = outLog
+                        ? formatPH(outLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
+                        : inLog ? formatPH(inLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
+                      return (
+                        <tr key={p.id} className="border-t border-border">
+                          <td className="p-3 font-medium">{p.full_name}</td>
+                          <td className="p-3"><Badge variant={statusColor as any} className="rounded-lg">{status}</Badge></td>
+                          <td className="p-3 font-mono text-xs">{time}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {idle && !confirm && !showVisitor && !areaView && (
         <IdleAds birthdayPeople={birthdayPeople} announcements={announcements} onExit={() => { setIdle(false); inputRef.current?.focus(); }} />
       )}
     </div>
   );
 }
 
-function FacilityRow({ label, status }: { label: string; status: Status }) {
-  const map: Record<Status, string> = {
-    open: "bg-success/20 text-white border-success/40",
-    closed: "bg-destructive/20 text-white border-destructive/40",
-    holiday: "bg-warning/20 text-white border-warning/40",
-  };
+function FacilityChip({ label, status }: { label: string; status: Status }) {
+  const tone = status === "open" ? "bg-success/30 border-success/50" : status === "closed" ? "bg-destructive/30 border-destructive/50" : "bg-warning/30 border-warning/50";
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span>{label}</span>
-      <Badge variant="outline" className={`rounded-lg border ${map[status]} capitalize`}>{status}</Badge>
-    </div>
+    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 border ${tone}`}>
+      <span className="font-semibold">{label}</span>
+      <span className="capitalize opacity-90">{status}</span>
+    </span>
   );
-}
-
-function greet(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
 }
