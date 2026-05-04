@@ -57,19 +57,29 @@ export default function EmployeeDashboard() {
   if (!profile) return null;
 
   return (
-    <div className="min-h-screen gradient-subtle">
+    <div className="min-h-screen gradient-subtle flex flex-col">
       <AppHeader />
-      <main className="container py-8 space-y-6">
+      <main className="container py-6 md:py-8 space-y-6 flex-1">
+        <Tabs defaultValue="overview" className="space-y-4">
+          <TabsList className="rounded-2xl">
+            <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
+            <TabsTrigger value="messages" className="rounded-xl"><MessageSquare className="h-4 w-4 mr-1" /> Messages</TabsTrigger>
+          </TabsList>
+          <TabsContent value="messages"><MessagesPanel currentId={profile.company_id} /></TabsContent>
+          <TabsContent value="overview" className="space-y-6">
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Profile card */}
           <section className="rounded-2xl bg-card border border-border shadow-soft p-6">
             <div className="flex items-center gap-4 mb-6">
-              <Avatar className="h-16 w-16">
-                <AvatarImage src={profile.avatar_url ?? undefined} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-lg">
-                  {profile.full_name?.split(" ").map(n => n[0]).slice(0,2).join("")}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={profile.avatar_url ?? undefined} loading="lazy" />
+                  <AvatarFallback className="bg-primary text-primary-foreground text-lg">
+                    {profile.full_name?.split(" ").map(n => n[0]).slice(0,2).join("")}
+                  </AvatarFallback>
+                </Avatar>
+                <AvatarUpload companyId={profile.company_id} />
+              </div>
               <div>
                 <h2 className="font-bold text-xl">{profile.full_name}</h2>
                 <p className="text-sm text-muted-foreground">{profile.role}</p>
