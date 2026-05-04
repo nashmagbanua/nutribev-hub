@@ -94,7 +94,8 @@ function StatusBadge({ status }: { status: ClinicRequest["status"] }) {
     pending: "bg-muted text-muted-foreground",
     available: "bg-success/15 text-success border border-success/30",
     follow_up: "bg-warning/20 text-foreground border border-warning/40",
+    picked_up: "bg-primary/15 text-primary border border-primary/30",
   };
-  const label = status === "follow_up" ? "To Follow Up" : status === "available" ? "Available" : "Pending";
+  const label = status === "follow_up" ? "To Follow Up" : status === "picked_up" ? "Picked Up" : status === "available" ? "Available" : "Pending";
   return <Badge className={`rounded-lg ${map[status]} capitalize`}>{label}</Badge>;
 }

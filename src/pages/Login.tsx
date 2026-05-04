@@ -23,11 +23,17 @@ export default function Login() {
       return;
     }
     setLoading(true);
-    const { error } = await login(companyId, password);
+    const { error, profile } = await login(companyId, password);
     setLoading(false);
     if (error) { toast.error(error); return; }
-    toast.success("Welcome back!");
-    navigate("/dashboard");
+    const role = (profile?.role ?? "").toLowerCase();
+    if (role === "hr" || role === "admin") {
+      toast.success(`HR login successful — welcome, ${profile?.full_name}.`);
+      navigate("/hr");
+    } else {
+      toast.success("Welcome back!");
+      navigate("/dashboard");
+    }
   };
 
   return (
