@@ -193,6 +193,7 @@ export default function HRDashboard() {
               attendance={filteredAttendance}
               profiles={profiles}
               settings={settings}
+              onChanged={loadAll}
             />
           </TabsContent>
 
@@ -240,6 +241,12 @@ export default function HRDashboard() {
             </div>
           </TabsContent>
           {/* SETTINGS */}
+          <TabsContent value="areas">
+            <AreaCodesPanel rows={areaCodes} onChanged={loadAll} />
+          </TabsContent>
+          <TabsContent value="inbox">
+            <InboxPanel currentId={profile?.company_id ?? ""} messages={messages} profiles={profiles} onChanged={loadAll} />
+          </TabsContent>
           <TabsContent value="visitors">
             <VisitorsTable rows={visitors} />
           </TabsContent>
