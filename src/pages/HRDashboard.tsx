@@ -429,7 +429,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
 
-function AttendanceTable({ attendance, profiles, settings }: { attendance: AttendanceRow[]; profiles: Profile[]; settings: KioskSettings | null }) {
+function AttendanceTable({ attendance, profiles, settings, onChanged }: { attendance: AttendanceRow[]; profiles: Profile[]; settings: KioskSettings | null; onChanged: () => void }) {
   const profileMap = useMemo(() => {
     const m: Record<string, Profile> = {};
     profiles.forEach(p => { m[p.company_id] = p; });
@@ -491,10 +491,11 @@ function AttendanceTable({ attendance, profiles, settings }: { attendance: Atten
             <th className="p-4">Shift</th>
             <th className="p-4">Status</th>
             <th className="p-4">Overtime</th>
+            <th className="p-4 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {grouped.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>}
+          {grouped.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>}
           {grouped.map(g => {
             const p = profileMap[g.companyId];
             const late = g.in ? isLate(g.in) : false;
@@ -512,12 +513,60 @@ function AttendanceTable({ attendance, profiles, settings }: { attendance: Atten
                     : g.in ? <Badge className="rounded-lg bg-success/15 text-success">On time</Badge> : <Badge variant="secondary" className="rounded-lg">—</Badge>}
                 </td>
                 <td className="p-4 font-mono text-xs">{computeOT(g)}</td>
+                <td className="p-4 text-right">
+                  <div className="inline-flex gap-1">
+                    {g.in && <EditAttendanceDialog row={g.in} onSaved={onChanged} />}
+                    {g.out && <EditAttendanceDialog row={g.out} onSaved={onChanged} />}
+                    <Button size="icon" variant="ghost" onClick={async () => {
+                      if (!confirm("Delete this attendance record (both in/out for the day)?")) return;
+                      const ids = [g.in?.id, g.out?.id].filter(Boolean) as string[];
+                      const { error } = await supabase.from("attendance").delete().in("id", ids);
+                      if (error) return toast.error(error.message);
+                      toast.success("Deleted"); onChanged();
+                    }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  </div>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function EditAttendanceDialog({ row, onSaved }: { row: AttendanceRow; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  // datetime-local format yyyy-MM-ddTHH:mm in local time
+  const toLocal = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [val, setVal] = useState(toLocal(row.timestamp));
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    setSaving(true);
+    const iso = new Date(val).toISOString();
+    const { error } = await supabase.from("attendance").update({ timestamp: iso }).eq("id", row.id);
+    setSaving(false);
+    if (error) return toast.error(error.message);
+    toast.success("Updated"); setOpen(false); onSaved();
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="icon" variant="ghost" title={`Edit Time ${row.type === "time_in" ? "In" : "Out"}`}><Pencil className="h-4 w-4" /></Button>
+      </DialogTrigger>
+      <DialogContent className="rounded-2xl">
+        <DialogHeader><DialogTitle>Edit Time {row.type === "time_in" ? "In" : "Out"}</DialogTitle></DialogHeader>
+        <Field label="Timestamp"><Input type="datetime-local" value={val} onChange={e => setVal(e.target.value)} /></Field>
+        <DialogFooter>
+          <Button variant="outline" className="rounded-xl" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={submit} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground">{saving ? "Saving…" : "Save"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
