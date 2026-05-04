@@ -13,6 +13,7 @@ import EmployeeDashboard from "./pages/EmployeeDashboard";
 import HRDashboard from "./pages/HRDashboard";
 import Clinic from "./pages/Clinic";
 import MobilePunch from "./pages/MobilePunch";
+import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Kiosk />} />
+              <Route path="/welcome" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/attendance-list" element={<AttendanceList />} />
