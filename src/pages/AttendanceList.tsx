@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { supabase, formatPH, type AttendanceRow, type Profile } from "@/lib/supabase";
+import { supabase, formatPH, lastNameOf, type AttendanceRow, type Profile } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,8 +37,15 @@ export default function AttendanceList() {
       if (r.type === "time_in") m[r.company_id].in = r;
       else m[r.company_id].out = r;
     });
-    return Object.entries(m);
-  }, [rows]);
+    // Only show employees who have timed in; sort alphabetically by last name.
+    return Object.entries(m)
+      .filter(([, p]) => !!p.in)
+      .sort(([a], [b]) => {
+        const an = profiles[a]?.full_name ?? a;
+        const bn = profiles[b]?.full_name ?? b;
+        return lastNameOf(an).localeCompare(lastNameOf(bn));
+      });
+  }, [rows, profiles]);
 
   return (
     <div className="min-h-screen gradient-subtle">
