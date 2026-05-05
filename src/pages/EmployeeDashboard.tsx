@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { supabase, uploadImage, type AttendanceRow, type Message, type Profile } from "@/lib/supabase";
+import { supabase, uploadImage, type AttendanceRow } from "@/lib/supabase";
 import { AppHeader } from "@/components/AppHeader";
 import { Footer } from "@/components/Footer";
+import { ChatMessenger } from "@/components/ChatMessenger";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Calendar as CalIcon, IdCard, User, Cake, Briefcase, Mail, KeyRound, Camera, MessageSquare, Send, Trash2 } from "lucide-react";
+import { Calendar as CalIcon, IdCard, User, Cake, Briefcase, Mail, KeyRound, Camera, MessageSquare } from "lucide-react";
 import {
   startOfMonth, endOfMonth, eachDayOfInterval, format, isSameDay, isWeekend, isAfter, startOfDay,
 } from "date-fns";
