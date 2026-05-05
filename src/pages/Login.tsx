@@ -28,8 +28,8 @@ export default function Login() {
     if (error) { toast.error(error); return; }
     const role = (profile?.role ?? "").toLowerCase();
     const dest = (role === "hr" || role === "admin") ? "/hr" : "/dashboard";
-    // Hard redirect — fastest, prevents re-render loops on mobile/iOS.
-    window.location.replace(dest);
+    // Client-side navigation (prevents 404 on mobile)
+    navigate(dest, { replace: true });
   };
 
   return (
