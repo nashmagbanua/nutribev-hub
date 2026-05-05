@@ -63,7 +63,7 @@ export default function EmployeeDashboard() {
             <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
             <TabsTrigger value="messages" className="rounded-xl"><MessageSquare className="h-4 w-4 mr-1" /> Messages</TabsTrigger>
           </TabsList>
-          <TabsContent value="messages"><MessagesPanel currentId={profile.company_id} /></TabsContent>
+          <TabsContent value="messages"><ChatMessenger currentId={profile.company_id} /></TabsContent>
           <TabsContent value="overview" className="space-y-6">
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Profile card */}
