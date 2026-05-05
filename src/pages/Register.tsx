@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { supabase, DEFAULT_AREA_CODES } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, UserPlus } from "lucide-react";
 
 export default function Register() {
   const [form, setForm] = useState({
-    company_id: "", full_name: "", email: "", position: "", dob: "", password: "", confirm: "",
+    company_id: "", full_name: "", email: "", position: "", dob: "", password: "", confirm: "", area_name: "",
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -21,13 +22,16 @@ export default function Register() {
       toast.error("Company ID, full name and password are required.");
       return;
     }
+    if (!form.area_name) { toast.error("Please select your Area."); return; }
     if (form.password.length < 6) { toast.error("Password must be at least 6 characters."); return; }
     if (form.password !== form.confirm) { toast.error("Passwords do not match."); return; }
     if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) { toast.error("Invalid email."); return; }
 
+    // Hidden mapping — area code is NEVER shown to employees.
+    const areaCode = DEFAULT_AREA_CODES.find(a => a.name === form.area_name)?.code ?? null;
+
     setLoading(true);
     try {
-      // check uniqueness
       const { data: existing } = await supabase
         .from("profiles").select("id").eq("company_id", form.company_id.trim()).maybeSingle();
       if (existing) { toast.error("That Company ID is already registered."); setLoading(false); return; }
@@ -41,6 +45,7 @@ export default function Register() {
         password: form.password,
         role: "Employee",
         is_approved: false,
+        area_code: areaCode,
       });
       if (error) throw error;
       toast.success("Account created — pending HR approval.");
@@ -75,8 +80,17 @@ export default function Register() {
               <Field label="Full Name *"><Input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></Field>
               <Field label="Email"><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
               <Field label="Position"><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="e.g. Operator" /></Field>
+              <Field label="Area *">
+                <Select value={form.area_name} onValueChange={v => setForm({ ...form, area_name: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select area" /></SelectTrigger>
+                  <SelectContent>
+                    {DEFAULT_AREA_CODES.map(a => (
+                      <SelectItem key={a.code} value={a.name}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
               <Field label="Date of Birth"><Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></Field>
-              <div />
               <Field label="Password *"><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
               <Field label="Confirm Password *"><Input type="password" value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} /></Field>
             </div>
@@ -96,3 +110,4 @@ export default function Register() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
+
