@@ -1,24 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
-import { supabase, haversineMeters, shiftFromTimeIn, formatPH, phDateKey, COMPANY_LAT, COMPANY_LNG, DEFAULT_RADIUS_M, type KioskSettings } from "@/lib/supabase";
+import {
+  supabase, haversineMeters, shiftFromTimeIn, formatPH, withTimeout,
+  COMPANY_LAT, COMPANY_LNG, DEFAULT_RADIUS_M, type KioskSettings,
+} from "@/lib/supabase";
 import { toast } from "sonner";
-import { Loader2, Smartphone, MapPin, ShieldCheck } from "lucide-react";
+import { Loader2, Smartphone, MapPin, ShieldCheck, LogIn, LogOut } from "lucide-react";
+
+type Latest = { type: "time_in" | "time_out"; timestamp: string } | null;
 
 export default function MobilePunch() {
   const { profile } = useAuth();
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [geoErr, setGeoErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"in" | "out" | null>(null);
   const [settings, setSettings] = useState<KioskSettings | null>(null);
-  const [todayLogs, setTodayLogs] = useState<any[]>([]);
+  const [latest, setLatest] = useState<Latest>(null);
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from("kiosk_settings").select("*").limit(1).maybeSingle();
-      if (data) setSettings(data as KioskSettings);
-    })();
+    withTimeout(supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(), 8000, "Settings")
+      .then(({ data }: any) => data && setSettings(data as KioskSettings))
+      .catch(() => { /* ignore */ });
   }, []);
 
   useEffect(() => {
@@ -31,16 +35,19 @@ export default function MobilePunch() {
     return () => navigator.geolocation.clearWatch(w);
   }, []);
 
-  const loadToday = async () => {
+  const loadLatest = useCallback(async () => {
     if (!profile) return;
-    const today = phDateKey();
-    const startUtc = new Date(`${today}T00:00:00+08:00`).toISOString();
-    const endUtc = new Date(`${today}T23:59:59+08:00`).toISOString();
-    const { data } = await supabase.from("attendance").select("*")
-      .eq("company_id", profile.company_id).gte("timestamp", startUtc).lte("timestamp", endUtc);
-    setTodayLogs(data ?? []);
-  };
-  useEffect(() => { loadToday(); /* eslint-disable-next-line */ }, [profile]);
+    try {
+      const { data } = await withTimeout(
+        supabase.from("attendance").select("type, timestamp")
+          .eq("company_id", profile.company_id)
+          .order("timestamp", { ascending: false }).limit(1),
+        8000, "Attendance"
+      ) as any;
+      setLatest(((data ?? [])[0] as Latest) ?? null);
+    } catch (e: any) { toast.error(e.message ?? "Network timeout"); }
+  }, [profile]);
+  useEffect(() => { loadLatest(); }, [loadLatest]);
 
   if (!profile) return null;
 
@@ -49,28 +56,28 @@ export default function MobilePunch() {
   const cLng = settings?.geofence_lng ?? COMPANY_LNG;
   const dist = coords ? Math.round(haversineMeters(coords.lat, coords.lng, cLat, cLng)) : null;
   const inside = dist !== null && dist <= radius;
-  const hasIn = todayLogs.some(r => r.type === "time_in");
-  const hasOut = todayLogs.some(r => r.type === "time_out");
-  const next: "in" | "out" | null = !hasIn ? "in" : !hasOut ? "out" : null;
 
-  const punch = async () => {
-    if (!next) { toast.error("Already completed today."); return; }
+  // Shift open if latest record is a time_in.
+  const shiftOpen = latest?.type === "time_in";
+
+  const punch = async (action: "in" | "out") => {
     if (!inside) { toast.error("Outside company premises."); return; }
-    setBusy(true);
+    if (action === "in" && shiftOpen) { toast.error("You already have an open shift. Time Out first."); return; }
+    if (action === "out" && !shiftOpen) { toast.error("No open shift to Time Out from."); return; }
+    setBusy(action);
     try {
       const ts = new Date();
-      const shift = next === "in" ? shiftFromTimeIn(ts) : null;
-      const { error } = await supabase.from("attendance").insert({
+      const shift = action === "in" ? shiftFromTimeIn(ts) : null;
+      await withTimeout(supabase.from("attendance").insert({
         company_id: profile.company_id,
-        type: next === "in" ? "time_in" : "time_out",
+        type: action === "in" ? "time_in" : "time_out",
         timestamp: ts.toISOString(),
         shift,
         source: "mobile_fallback",
-      });
-      if (error) throw error;
-      toast.success(`Time ${next.toUpperCase()} recorded (mobile fallback).`);
-      loadToday();
-    } catch (e: any) { toast.error(e.message); } finally { setBusy(false); }
+      }), 8000, "Save");
+      toast.success(action === "in" ? "TIME IN SUCCESS" : "TIME OUT SUCCESS");
+      loadLatest();
+    } catch (e: any) { toast.error(e.message); } finally { setBusy(null); }
   };
 
   return (
@@ -79,7 +86,7 @@ export default function MobilePunch() {
       <main className="container py-8 max-w-md space-y-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Smartphone className="h-6 w-6 text-primary" /> Mobile Time In/Out</h1>
-          <p className="text-sm text-muted-foreground">Fallback only when the kiosk is unavailable. Logs are tagged <span className="font-mono">MOBILE_FALLBACK</span>.</p>
+          <p className="text-sm text-muted-foreground">Fallback when the kiosk is unavailable. Supports night shift.</p>
         </div>
 
         <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
@@ -91,15 +98,28 @@ export default function MobilePunch() {
               : <span className="text-destructive font-semibold">Outside premises ({dist}m, allowed {radius}m)</span>}
           </div>
 
-          <div className="text-sm space-y-1">
-            <div>Time In: <span className="font-semibold">{todayLogs.find(l=>l.type==="time_in") ? formatPH(todayLogs.find(l=>l.type==="time_in").timestamp, { hour:"2-digit", minute:"2-digit", hour12:true }) : "—"}</span></div>
-            <div>Time Out: <span className="font-semibold">{todayLogs.find(l=>l.type==="time_out") ? formatPH(todayLogs.find(l=>l.type==="time_out").timestamp, { hour:"2-digit", minute:"2-digit", hour12:true }) : "—"}</span></div>
+          <div className="text-sm rounded-xl bg-muted/40 p-3">
+            <div className="font-semibold mb-1">Current status</div>
+            {latest ? (
+              <div>
+                Last action: <span className="font-mono uppercase">{latest.type.replace("_", " ")}</span> ·{" "}
+                {formatPH(latest.timestamp, { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })}
+              </div>
+            ) : <div className="text-muted-foreground">No records yet.</div>}
+            <div className="mt-1">Shift open: <span className="font-semibold">{shiftOpen ? "Yes" : "No"}</span></div>
           </div>
 
-          <Button onClick={punch} disabled={busy || !next || !inside}
-            className="w-full h-14 rounded-2xl text-lg font-bold gradient-primary text-primary-foreground">
-            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : next ? `Time ${next.toUpperCase()}` : "Completed"}
-          </Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={() => punch("in")} disabled={!!busy || !inside || shiftOpen}
+              className="h-14 rounded-2xl text-base font-bold gradient-primary text-primary-foreground">
+              {busy === "in" ? <Loader2 className="h-5 w-5 animate-spin" /> : (<><LogIn className="h-5 w-5 mr-2" /> Time In</>)}
+            </Button>
+            <Button onClick={() => punch("out")} disabled={!!busy || !inside || !shiftOpen}
+              variant="outline"
+              className="h-14 rounded-2xl text-base font-bold">
+              {busy === "out" ? <Loader2 className="h-5 w-5 animate-spin" /> : (<><LogOut className="h-5 w-5 mr-2" /> Time Out</>)}
+            </Button>
+          </div>
         </div>
       </main>
     </div>
