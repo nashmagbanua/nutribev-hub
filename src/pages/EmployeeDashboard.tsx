@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { supabase, uploadImage, type AttendanceRow, type Message, type Profile } from "@/lib/supabase";
+import { supabase, uploadImage, type AttendanceRow } from "@/lib/supabase";
 import { AppHeader } from "@/components/AppHeader";
 import { Footer } from "@/components/Footer";
+import { ChatMessenger } from "@/components/ChatMessenger";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Calendar as CalIcon, IdCard, User, Cake, Briefcase, Mail, KeyRound, Camera, MessageSquare, Send, Trash2 } from "lucide-react";
+import { Calendar as CalIcon, IdCard, User, Cake, Briefcase, Mail, KeyRound, Camera, MessageSquare } from "lucide-react";
 import {
   startOfMonth, endOfMonth, eachDayOfInterval, format, isSameDay, isWeekend, isAfter, startOfDay,
 } from "date-fns";
@@ -65,7 +63,7 @@ export default function EmployeeDashboard() {
             <TabsTrigger value="overview" className="rounded-xl">Overview</TabsTrigger>
             <TabsTrigger value="messages" className="rounded-xl"><MessageSquare className="h-4 w-4 mr-1" /> Messages</TabsTrigger>
           </TabsList>
-          <TabsContent value="messages"><MessagesPanel currentId={profile.company_id} /></TabsContent>
+          <TabsContent value="messages"><ChatMessenger currentId={profile.company_id} /></TabsContent>
           <TabsContent value="overview" className="space-y-6">
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Profile card */}
@@ -180,63 +178,6 @@ function AvatarUpload({ companyId }: { companyId: string }) {
   );
 }
 
-function MessagesPanel({ currentId }: { currentId: string }) {
-  const [msgs, setMsgs] = useState<Message[]>([]);
-  const [people, setPeople] = useState<Profile[]>([]);
-  const [to, setTo] = useState("");
-  const [body, setBody] = useState("");
-  const load = async () => {
-    const [m, p] = await Promise.all([
-      supabase.from("messages").select("*").or(`to_company_id.eq.${currentId},from_company_id.eq.${currentId}`).order("created_at", { ascending: false }).limit(200),
-      supabase.from("profiles").select("id, company_id, full_name, role, avatar_url, dob, is_approved").eq("is_approved", true),
-    ]);
-    setMsgs((m.data as Message[]) ?? []);
-    setPeople(((p.data as Profile[]) ?? []).filter(x => x.company_id !== currentId));
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [currentId]);
-  const nameOf = (cid: string) => people.find(p => p.company_id === cid)?.full_name ?? cid;
-  const send = async () => {
-    if (!to || !body.trim()) { toast.error("Choose recipient and write a message."); return; }
-    const { error } = await supabase.from("messages").insert({ from_company_id: currentId, to_company_id: to, body: body.trim() });
-    if (error) return toast.error(error.message);
-    setBody(""); toast.success("Sent"); load();
-  };
-  const remove = async (id: string) => { await supabase.from("messages").delete().eq("id", id); load(); };
-  const unread = msgs.filter(m => m.to_company_id === currentId && !m.read).length;
-  return (
-    <div className="space-y-3">
-      <div className="rounded-2xl bg-card border border-border shadow-soft p-4 space-y-3">
-        <div className="font-semibold flex items-center gap-2"><MessageSquare className="h-4 w-4 text-primary" /> New Message {unread > 0 && <Badge className="bg-primary text-primary-foreground rounded-full">{unread} unread</Badge>}</div>
-        <div className="grid sm:grid-cols-2 gap-2">
-          <Select value={to} onValueChange={setTo}>
-            <SelectTrigger className="rounded-xl"><SelectValue placeholder="To…" /></SelectTrigger>
-            <SelectContent>{people.map(p => <SelectItem key={p.id} value={p.company_id}>{p.full_name} ({p.company_id})</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <Textarea rows={2} value={body} onChange={e => setBody(e.target.value)} placeholder="Type a message…" className="rounded-xl" />
-        <Button onClick={send} className="rounded-xl gradient-primary text-primary-foreground"><Send className="h-4 w-4 mr-2" /> Send</Button>
-      </div>
-      <div className="space-y-2 max-h-[60vh] overflow-auto">
-        {msgs.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">No messages yet.</p>}
-        {msgs.map(m => {
-          const mine = m.from_company_id === currentId;
-          return (
-            <div key={m.id} className={`rounded-2xl p-3 max-w-[85%] ${mine ? "ml-auto bg-primary text-primary-foreground" : "bg-card border border-border"}`}>
-              <div className="text-xs opacity-80 flex justify-between gap-3">
-                <span>{mine ? `To ${nameOf(m.to_company_id)}` : `From ${nameOf(m.from_company_id)}`}</span>
-                <span>{format(new Date(m.created_at), "PPp")}</span>
-              </div>
-              <p className="mt-1 text-sm whitespace-pre-wrap">{m.body}</p>
-              <div className="mt-1 text-right">
-                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => remove(m.id)}><Trash2 className="h-3 w-3" /></Button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (

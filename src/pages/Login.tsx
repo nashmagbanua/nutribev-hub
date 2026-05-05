@@ -27,13 +27,9 @@ export default function Login() {
     setLoading(false);
     if (error) { toast.error(error); return; }
     const role = (profile?.role ?? "").toLowerCase();
-    if (role === "hr" || role === "admin") {
-      toast.success(`HR login successful — welcome, ${profile?.full_name}.`);
-      navigate("/hr");
-    } else {
-      toast.success("Welcome back!");
-      navigate("/dashboard");
-    }
+    const dest = (role === "hr" || role === "admin") ? "/hr" : "/dashboard";
+    // Hard redirect — fastest, prevents re-render loops on mobile/iOS.
+    window.location.replace(dest);
   };
 
   return (
