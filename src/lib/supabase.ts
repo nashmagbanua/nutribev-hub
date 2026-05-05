@@ -95,7 +95,18 @@ export type Message = {
   body: string;
   read: boolean;
   created_at: string;
+  status?: "sent" | "delivered" | "read";
+  deleted_by_sender?: boolean;
+  deleted_by_receiver?: boolean;
 };
+
+/** Race a promise against a timeout — protects mobile/iOS from hangs. */
+export function withTimeout<T>(p: PromiseLike<T>, ms = 8000, label = "Request"): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    Promise.resolve(p).then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
 
 // ===== Constants =====
 export const COMPANY_LAT = 14.258657284905194;
