@@ -188,18 +188,24 @@ export default function Kiosk() {
       if (!profile) { toast.error("Company ID not found."); setCode(""); return; }
       if (!profile.is_approved) { toast.error("Account pending HR approval."); setCode(""); return; }
 
-      const startUtc = new Date(`${todayPH}T00:00:00+08:00`).toISOString();
-      const endUtc = new Date(`${todayPH}T23:59:59+08:00`).toISOString();
-      const { data: logs } = await supabase
+      // Latest-record logic — supports cross-date night shift.
+      // If latest record is an open time_in (no time_out after it) → TIME OUT.
+      // Otherwise → TIME IN.
+      const { data: latestRows } = await supabase
         .from("attendance").select("*")
         .eq("company_id", profile.company_id)
-        .gte("timestamp", startUtc).lte("timestamp", endUtc);
+        .order("timestamp", { ascending: false })
+        .limit(1);
+      const latest = (latestRows ?? [])[0] as any | undefined;
+      const action: "in" | "out" = latest && latest.type === "time_in" ? "out" : "in";
 
-      const hasIn = (logs ?? []).some((r: any) => r.type === "time_in");
-      const hasOut = (logs ?? []).some((r: any) => r.type === "time_out");
-      if (hasIn && hasOut) { toast.error("Already completed Time In and Time Out for today."); setCode(""); return; }
+      // Prevent duplicate within 60s.
+      if (latest && Date.now() - new Date(latest.timestamp).getTime() < 60_000) {
+        toast.error("Please wait a moment before logging again.");
+        setCode("");
+        return;
+      }
 
-      const action: "in" | "out" = hasIn ? "out" : "in";
       const ts = new Date();
       const shift = action === "in" ? shiftFromTimeIn(ts) : null;
 
