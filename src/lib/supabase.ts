@@ -8,19 +8,62 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
 });
 
+export type SystemRole = "employee" | "supervisor" | "nurse" | "safety_officer" | "hr_admin" | "manager";
+export type JobPosition = "mantech" | "opscrew" | "maintenance" | "qa" | "fullgoods";
+export type Department = "production" | "process" | "utilities" | "fullgoods" | "qa";
+
+export const SYSTEM_ROLES: { value: SystemRole; label: string }[] = [
+  { value: "employee", label: "Employee" },
+  { value: "supervisor", label: "Supervisor" },
+  { value: "nurse", label: "Nurse" },
+  { value: "safety_officer", label: "Safety Officer" },
+  { value: "hr_admin", label: "HR / Admin" },
+  { value: "manager", label: "Manager" },
+];
+export const JOB_POSITIONS: { value: JobPosition; label: string }[] = [
+  { value: "mantech", label: "Mantech" },
+  { value: "opscrew", label: "Opscrew" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "qa", label: "QA" },
+  { value: "fullgoods", label: "Full Goods" },
+];
+export const DEPARTMENTS: { value: Department; label: string }[] = [
+  { value: "production", label: "Production" },
+  { value: "process", label: "Process" },
+  { value: "utilities", label: "Utilities" },
+  { value: "fullgoods", label: "Full Goods" },
+  { value: "qa", label: "QA" },
+];
+
 export type Profile = {
   id: string;
   company_id: string;
   full_name: string;
   dob: string | null;
-  role: string;
-  position?: string | null;
+  role: string;                     // legacy
+  position?: string | null;         // legacy
+  system_role?: SystemRole | null;  // new
+  job_position?: JobPosition | null;// new
+  department?: Department | null;   // new
   email?: string | null;
   avatar_url: string | null;
   password?: string;
   is_approved: boolean;
   area_code?: string | null;
 };
+
+/** Effective role for permissions — prefers new system_role, falls back to legacy role. */
+export function effectiveRole(p?: Profile | null): SystemRole {
+  if (!p) return "employee";
+  if (p.system_role) return p.system_role;
+  const r = (p.role ?? "").toLowerCase();
+  if (r === "hr" || r === "admin" || r === "hr_admin") return "hr_admin";
+  if (r === "supervisor") return "supervisor";
+  if (r === "nurse") return "nurse";
+  if (r === "safety_officer" || r === "safety") return "safety_officer";
+  if (r === "manager") return "manager";
+  return "employee";
+}
 
 export type AttendanceRow = {
   id: string;

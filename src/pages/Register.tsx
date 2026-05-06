@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase, DEFAULT_AREA_CODES } from "@/lib/supabase";
+import {
+  supabase, DEFAULT_AREA_CODES,
+  SYSTEM_ROLES, JOB_POSITIONS, DEPARTMENTS,
+  type SystemRole, type JobPosition, type Department,
+} from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +15,16 @@ import { ArrowLeft, Loader2, UserPlus } from "lucide-react";
 
 export default function Register() {
   const [form, setForm] = useState({
-    company_id: "", full_name: "", email: "", position: "", dob: "", password: "", confirm: "", area_name: "",
+    company_id: "",
+    full_name: "",
+    email: "",
+    dob: "",
+    password: "",
+    confirm: "",
+    area_name: "",
+    system_role: "" as SystemRole | "",
+    job_position: "" as JobPosition | "",
+    department: "" as Department | "",
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -19,15 +32,16 @@ export default function Register() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.company_id || !form.full_name || !form.password) {
-      toast.error("Company ID, full name and password are required.");
-      return;
+      toast.error("Company ID, full name and password are required."); return;
     }
     if (!form.area_name) { toast.error("Please select your Area."); return; }
+    if (!form.system_role) { toast.error("Please select your Role."); return; }
+    if (!form.job_position) { toast.error("Please select your Position."); return; }
+    if (!form.department) { toast.error("Please select your Department."); return; }
     if (form.password.length < 6) { toast.error("Password must be at least 6 characters."); return; }
     if (form.password !== form.confirm) { toast.error("Passwords do not match."); return; }
     if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) { toast.error("Invalid email."); return; }
 
-    // Hidden mapping — area code is NEVER shown to employees.
     const areaCode = DEFAULT_AREA_CODES.find(a => a.name === form.area_name)?.code ?? null;
 
     setLoading(true);
@@ -40,10 +54,13 @@ export default function Register() {
         company_id: form.company_id.trim(),
         full_name: form.full_name.trim(),
         email: form.email.trim() || null,
-        position: form.position.trim() || null,
+        position: form.job_position,            // legacy mirror
+        job_position: form.job_position,
+        department: form.department,
         dob: form.dob || null,
         password: form.password,
-        role: "Employee",
+        role: form.system_role === "hr_admin" ? "HR" : "Employee", // legacy mirror
+        system_role: form.system_role,
         is_approved: false,
         area_code: areaCode,
       });
@@ -79,18 +96,41 @@ export default function Register() {
               <Field label="Company ID *"><Input value={form.company_id} onChange={e => setForm({ ...form, company_id: e.target.value })} placeholder="ABN-001" /></Field>
               <Field label="Full Name *"><Input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></Field>
               <Field label="Email"><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
-              <Field label="Position"><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="e.g. Operator" /></Field>
+              <Field label="Date of Birth"><Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></Field>
+
+              <Field label="Role *">
+                <Select value={form.system_role} onValueChange={v => setForm({ ...form, system_role: v as SystemRole })}>
+                  <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                  <SelectContent>
+                    {SYSTEM_ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Position *">
+                <Select value={form.job_position} onValueChange={v => setForm({ ...form, job_position: v as JobPosition })}>
+                  <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
+                  <SelectContent>
+                    {JOB_POSITIONS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Department *">
+                <Select value={form.department} onValueChange={v => setForm({ ...form, department: v as Department })}>
+                  <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
               <Field label="Area *">
                 <Select value={form.area_name} onValueChange={v => setForm({ ...form, area_name: v })}>
                   <SelectTrigger><SelectValue placeholder="Select area" /></SelectTrigger>
                   <SelectContent>
-                    {DEFAULT_AREA_CODES.map(a => (
-                      <SelectItem key={a.code} value={a.name}>{a.name}</SelectItem>
-                    ))}
+                    {DEFAULT_AREA_CODES.map(a => <SelectItem key={a.code} value={a.name}>{a.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Date of Birth"><Input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></Field>
+
               <Field label="Password *"><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></Field>
               <Field label="Confirm Password *"><Input type="password" value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} /></Field>
             </div>

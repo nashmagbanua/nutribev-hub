@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (companyId: string, password: string) => {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position, area_code")
+      .select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position, area_code, system_role, job_position, department")
       .eq("company_id", companyId.trim())
       .eq("password", password)
       .maybeSingle();
