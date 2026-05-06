@@ -65,44 +65,11 @@ export default function EmployeeDashboard() {
           </TabsList>
           <TabsContent value="messages"><ChatMessenger currentId={profile.company_id} /></TabsContent>
           <TabsContent value="overview" className="space-y-6">
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Profile card */}
-          <section className="rounded-2xl bg-card border border-border shadow-soft p-6">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="relative">
-                <Avatar className="h-20 w-20">
-                  <AvatarImage src={profile.avatar_url ?? undefined} loading="lazy" />
-                  <AvatarFallback className="bg-primary text-primary-foreground text-lg">
-                    {profile.full_name?.split(" ").map(n => n[0]).slice(0,2).join("")}
-                  </AvatarFallback>
-                </Avatar>
-                <AvatarUpload companyId={profile.company_id} />
-              </div>
-              <div>
-                <h2 className="font-bold text-xl">{profile.full_name}</h2>
-                <p className="text-sm text-muted-foreground">{profile.role}</p>
-              </div>
-            </div>
-            <div className="space-y-3 text-sm">
-              <Row icon={<User className="h-4 w-4" />} label="Name" value={profile.full_name} />
-              <Row icon={<IdCard className="h-4 w-4" />} label="Company ID" value={profile.company_id} />
-              <Row icon={<Briefcase className="h-4 w-4" />} label="Role" value={profile.role} />
-              <Row icon={<Mail className="h-4 w-4" />} label="Email" value={profile.email ?? "—"} />
-              <Row icon={<Cake className="h-4 w-4" />} label="Date of Birth" value={profile.dob ? format(new Date(profile.dob), "PPP") : "—"} />
-            </div>
-            <div className="mt-4 flex gap-2">
-              <ChangePasswordDialog companyId={profile.company_id} />
-              <UpdateEmailDialog companyId={profile.company_id} current={profile.email ?? ""} />
-            </div>
-          </section>
-
-          {/* Summary cards */}
-          <section className="lg:col-span-2 grid sm:grid-cols-3 gap-4">
-            <Stat label="Present" value={presentDays.length} className="bg-success/10 text-success" />
-            <Stat label="Absent" value={absentDays.length} className="bg-destructive/10 text-destructive" />
-            <Stat label="This Month" value={format(monthCursor, "MMMM yyyy")} small />
-          </section>
-        </div>
+        <section className="grid sm:grid-cols-3 gap-4">
+          <Stat label="Present" value={presentDays.length} className="bg-success/10 text-success" />
+          <Stat label="Absent" value={absentDays.length} className="bg-destructive/10 text-destructive" />
+          <Stat label="This Month" value={format(monthCursor, "MMMM yyyy")} small />
+        </section>
 
         {/* Calendar */}
         <section className="rounded-2xl bg-card border border-border shadow-soft p-6">
