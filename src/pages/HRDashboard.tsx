@@ -438,16 +438,31 @@ function AttendanceTable({ attendance, profiles, settings, onChanged }: { attend
 
   const grouped = useMemo(() => {
     const map: Record<string, { date: string; companyId: string; in?: AttendanceRow; out?: AttendanceRow }> = {};
+    
     attendance.forEach(r => {
-      const date = formatPH(r.timestamp, { year: "numeric", month: "2-digit", day: "2-digit" });
-      const key = `${r.company_id}|${date}`;
-      map[key] = map[key] ?? { date, companyId: r.company_id };
+      const ts = new Date(r.timestamp);
+      // Kunin ang PH Hour (0-23)
+      const phHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour: "numeric", hour12: false }).format(ts));
+      
+      // LOGIC: Kung ang Time Out ay nangyari sa pagitan ng 12 AM at 8 AM, 
+      // ibalik natin ang date key sa "kahapon" para sumama siya sa tamang Time In row.
+      let displayDate = formatPH(r.timestamp, { year: "numeric", month: "2-digit", day: "2-digit" });
+      
+      if (r.type === "time_out" && phHour < 8) {
+        const yesterday = new Date(ts);
+        yesterday.setHours(yesterday.getHours() - 8); // I-offset pabalik
+        displayDate = formatPH(yesterday, { year: "numeric", month: "2-digit", day: "2-digit" });
+      }
+
+      const key = `${r.company_id}|${displayDate}`;
+      map[key] = map[key] ?? { date: displayDate, companyId: r.company_id };
+      
       if (r.type === "time_in") map[key].in = r;
       else map[key].out = r;
     });
+
     return Object.values(map).sort((a, b) => (b.date + b.companyId).localeCompare(a.date + a.companyId));
   }, [attendance]);
-
   const lateDay = settings?.late_threshold_day ?? "06:05";
   const lateNight = settings?.late_threshold_night ?? "18:05";
 
