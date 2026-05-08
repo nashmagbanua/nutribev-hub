@@ -13,21 +13,20 @@ export default function AttendanceList() {
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+ useEffect(() => {
     (async () => {
       setLoading(true);
       
-      // FIX: Kunin hanggang 8:00 AM ng susunod na araw para sa Night Shift
-      const startUtc = new Date(`${date}T00:00:00+08:00`).toISOString();
-      const nextDay = new Date(new Date(`${date}T00:00:00+08:00`).getTime() + 24 * 60 * 60 * 1000);
-      const nextDayStr = nextDay.toISOString().split('T')[0];
-      const endUtc = new Date(`${nextDayStr}T08:00:00+08:00`).toISOString();
+      // Mas safe na paraan ng paggawa ng Date object
+      const [y, m, d] = date.split('-').map(Number);
+      const start = new Date(y, m - 1, d, 0, 0, 0); // Local start
+      const end = new Date(start.getTime() + (32 * 60 * 60 * 1000)); // +32 hours para abot ang Night Shift
 
       const [a, p] = await Promise.all([
         supabase.from("attendance")
           .select("*")
-          .gte("timestamp", startUtc)
-          .lte("timestamp", endUtc)
+          .gte("timestamp", start.toISOString())
+          .lte("timestamp", end.toISOString())
           .order("timestamp", { ascending: true }),
         supabase.from("profiles").select("id, company_id, full_name, position, role"),
       ]);
@@ -39,32 +38,27 @@ export default function AttendanceList() {
       setLoading(false);
     })();
   }, [date]);
-const grouped = useMemo(() => {
+
+  const grouped = useMemo(() => {
     const m: Record<string, { in?: AttendanceRow; out?: AttendanceRow }> = {};
 
     rows.forEach(r => {
       if (!m[r.company_id]) m[r.company_id] = {};
 
-      // 1. Hanapin ang Time In na pasok sa shift ng piniling petsa
+      // 1. Kunin ang Time In (Basta tumama sa piniling date sa PH)
       if (r.type === "time_in") {
-        // Tinitiyak natin na ang Time In ay nangyari sa piniling araw (PH Time)
         if (phDateKey(r.timestamp) === date) {
           m[r.company_id].in = r;
         }
       } 
       
-      // 2. Hanapin ang Time Out na kapares ng Time In na iyon
+      // 2. Kunin ang Time Out (Basta pagkatapos ng Time In at hindi sobrang tagal)
       if (r.type === "time_out") {
         const myIn = m[r.company_id].in;
         if (myIn) {
-          // Ang Time Out ay valid kung:
-          // - Same day nangyari (Day shift)
-          // - OR nangyari kinabukasan bago mag 10 AM (Night shift/OT)
-          const inTime = new Date(myIn.timestamp).getTime();
-          const outTime = new Date(r.timestamp).getTime();
-          const diffHours = (outTime - inTime) / (1000 * 60 * 60);
-
-          if (outTime > inTime && diffHours < 16) { // 16 hours max shift window
+          const diff = (new Date(r.timestamp).getTime() - new Date(myIn.timestamp).getTime()) / (1000 * 60 * 60);
+          // Kung ang Out ay nangyari 0-16 hours pagkatapos ng In, valid 'to
+          if (diff > 0 && diff < 16) {
             m[r.company_id].out = r;
           }
         }
