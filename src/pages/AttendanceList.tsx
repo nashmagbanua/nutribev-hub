@@ -4,7 +4,7 @@ import { supabase, formatPH, lastNameOf, phDateKey, type AttendanceRow, type Pro
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, CalendarCheck } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function AttendanceList() {
@@ -13,29 +13,35 @@ export default function AttendanceList() {
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(false);
 
- useEffect(() => {
+  useEffect(() => {
     (async () => {
       setLoading(true);
-      
-      // Mas safe na paraan ng paggawa ng Date object
-      const [y, m, d] = date.split('-').map(Number);
-      const start = new Date(y, m - 1, d, 0, 0, 0); // Local start
-      const end = new Date(start.getTime() + (32 * 60 * 60 * 1000)); // +32 hours para abot ang Night Shift
+      try {
+        const [y, m, d] = date.split('-').map(Number);
+        if (isNaN(y)) throw new Error("Invalid date selected");
 
-      const [a, p] = await Promise.all([
-        supabase.from("attendance")
-          .select("*")
-          .gte("timestamp", start.toISOString())
-          .lte("timestamp", end.toISOString())
-          .order("timestamp", { ascending: true }),
-        supabase.from("profiles").select("id, company_id, full_name, position, role"),
-      ]);
+        // Kunin ang records: Start of day hanggang +34 hours (para sa Night Shift)
+        const start = new Date(Date.UTC(y, m - 1, d, -8, 0, 0)); // Offset for PH
+        const end = new Date(start.getTime() + (34 * 60 * 60 * 1000));
 
-      setRows((a.data as AttendanceRow[]) ?? []);
-      const map: Record<string, Profile> = {};
-      ((p.data as Profile[]) ?? []).forEach(pr => { map[pr.company_id] = pr; });
-      setProfiles(map);
-      setLoading(false);
+        const [a, p] = await Promise.all([
+          supabase.from("attendance")
+            .select("*")
+            .gte("timestamp", start.toISOString())
+            .lte("timestamp", end.toISOString())
+            .order("timestamp", { ascending: true }),
+          supabase.from("profiles").select("id, company_id, full_name, position, role"),
+        ]);
+
+        setRows((a.data as AttendanceRow[]) ?? []);
+        const map: Record<string, Profile> = {};
+        ((p.data as Profile[]) ?? []).forEach(pr => { map[pr.company_id] = pr; });
+        setProfiles(map);
+      } catch (err) {
+        console.error("Fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [date]);
 
@@ -43,36 +49,43 @@ export default function AttendanceList() {
     const m: Record<string, { in?: AttendanceRow; out?: AttendanceRow }> = {};
 
     rows.forEach(r => {
-      if (!m[r.company_id]) m[r.company_id] = {};
+      // SAFETY CHECK: Siguraduhin na valid ang timestamp bago i-process
+      if (!r.timestamp || isNaN(Date.parse(r.timestamp))) return;
 
-      // 1. Kunin ang Time In (Basta tumama sa piniling date sa PH)
-      if (r.type === "time_in") {
-        if (phDateKey(r.timestamp) === date) {
-          m[r.company_id].in = r;
-        }
-      } 
-      
-      // 2. Kunin ang Time Out (Basta pagkatapos ng Time In at hindi sobrang tagal)
-      if (r.type === "time_out") {
-        const myIn = m[r.company_id].in;
-        if (myIn) {
-          const diff = (new Date(r.timestamp).getTime() - new Date(myIn.timestamp).getTime()) / (1000 * 60 * 60);
-          // Kung ang Out ay nangyari 0-16 hours pagkatapos ng In, valid 'to
-          if (diff > 0 && diff < 16) {
-            m[r.company_id].out = r;
+      try {
+        if (!m[r.company_id]) m[r.company_id] = {};
+
+        // Hanapin ang Time In para sa piniling araw
+        if (r.type === "time_in") {
+          if (phDateKey(r.timestamp) === date) {
+            m[r.company_id].in = r;
+          }
+        } 
+        
+        // Hanapin ang Time Out na valid partner (within 16 hours)
+        else if (r.type === "time_out") {
+          const myIn = m[r.company_id].in;
+          if (myIn) {
+            const diff = (new Date(r.timestamp).getTime() - new Date(myIn.timestamp).getTime()) / (1000 * 60 * 60);
+            if (diff > 0 && diff < 16) {
+              m[r.company_id].out = r;
+            }
           }
         }
+      } catch (e) {
+        console.warn("Skipping invalid row:", r);
       }
     });
 
     return Object.entries(m)
-      .filter(([, p]) => !!p.in) 
+      .filter(([, pair]) => !!pair.in)
       .sort(([a], [b]) => {
         const an = profiles[a]?.full_name ?? a;
         const bn = profiles[b]?.full_name ?? b;
         return lastNameOf(an).localeCompare(lastNameOf(bn));
       });
   }, [rows, profiles, date]);
+
   return (
     <div className="min-h-screen gradient-subtle">
       <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-30">
@@ -80,9 +93,7 @@ export default function AttendanceList() {
           <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" /> Back to kiosk
           </Link>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-          </div>
+          <ThemeToggle />
         </div>
       </header>
       <main className="container py-8 space-y-6">
@@ -101,8 +112,8 @@ export default function AttendanceList() {
 
         <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-muted/50">
                 <tr>
                   <th className="p-4">Employee</th>
                   <th className="p-4">Position</th>
@@ -113,30 +124,37 @@ export default function AttendanceList() {
                 </tr>
               </thead>
               <tbody>
-                {loading && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Loading…</td></tr>}
-                {!loading && grouped.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No records for {date}.</td></tr>}
+                {loading && (
+                  <tr>
+                    <td colSpan={6} className="p-12 text-center text-muted-foreground">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" /> Loading records...
+                    </td>
+                  </tr>
+                )}
+                {!loading && grouped.length === 0 && (
+                  <tr><td colSpan={6} className="p-12 text-center text-muted-foreground">No records for {date}.</td></tr>
+                )}
                 {grouped.map(([companyId, pair]) => {
                   const p = profiles[companyId];
-                  const shift = pair.in?.shift;
                   return (
-                    <tr key={companyId} className="border-t border-border hover:bg-muted/30 transition-colors">
+                    <tr key={companyId} className="border-t border-border hover:bg-muted/30">
                       <td className="p-4 font-medium">{p?.full_name ?? companyId}</td>
                       <td className="p-4 text-muted-foreground">{p?.position ?? "—"}</td>
                       <td className="p-4">{date}</td>
-                      <td className="p-4 font-mono">{pair.in ? formatPH(pair.in.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
+                      <td className="p-4 font-mono">{pair.in ? formatPH(pair.in.timestamp, { hour: '2-digit', minute: '2-digit', hour12: true }) : "—"}</td>
                       <td className="p-4 font-mono">
                         {pair.out ? (
-                          formatPH(pair.out.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
+                          formatPH(pair.out.timestamp, { hour: '2-digit', minute: '2-digit', hour12: true })
                         ) : (
-                          <Badge variant="outline" className="text-muted-foreground font-normal">Active / No Out</Badge>
+                          <Badge variant="outline" className="font-normal opacity-70">Active</Badge>
                         )}
                       </td>
                       <td className="p-4">
-                        {shift ? (
-                          <Badge variant={shift === 'night' ? 'default' : 'secondary'} className="rounded-lg capitalize">
-                            {shift} shift
+                        {pair.in?.shift && (
+                          <Badge variant={pair.in.shift === 'night' ? 'default' : 'secondary'} className="capitalize">
+                            {pair.in.shift}
                           </Badge>
-                        ) : "—"}
+                        )}
                       </td>
                     </tr>
                   );
@@ -151,12 +169,8 @@ export default function AttendanceList() {
 }
 
 function phToday(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
     year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(new Date());
-  const y = parts.find(p => p.type === "year")!.value;
-  const m = parts.find(p => p.type === "month")!.value;
-  const d = parts.find(p => p.type === "day")!.value;
-  return `${y}-${m}-${d}`;
+  }).format(new Date());
 }
