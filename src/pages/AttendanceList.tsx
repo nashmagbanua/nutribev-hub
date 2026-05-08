@@ -49,38 +49,42 @@ export default function AttendanceList() {
     const m: Record<string, { in?: AttendanceRow; out?: AttendanceRow }> = {};
 
     rows.forEach(r => {
-      // Mas maluwag na check: Basta may timestamp, ituloy ang processing
+      // 1. Basic safety check
       if (!r.timestamp || !r.company_id) return;
 
       try {
+        // I-normalize ang timestamp para siguradong mabasa ng Date object
+        const cleanTimestamp = r.timestamp.replace(' ', 'T'); 
+        const rowTime = new Date(cleanTimestamp).getTime();
+        
+        if (isNaN(rowTime)) return; // Skip kung talagang sira ang data
+
         if (!m[r.company_id]) m[r.company_id] = {};
 
-        // 1. Logic para sa Time In
+        // 2. Logic para sa Time In
         if (r.type === "time_in") {
-          // Gamitin ang phDateKey para i-match sa piniling 'date' sa UI
-          const rowDate = phDateKey(r.timestamp);
-          if (rowDate === date) {
+          // I-match ang row date sa napiling date sa calendar
+          if (phDateKey(r.timestamp) === date) {
             m[r.company_id].in = r;
           }
         } 
         
-        // 2. Logic para sa Time Out (Partnering)
+        // 3. Logic para sa Time Out (Partnering)
         else if (r.type === "time_out") {
           const myIn = m[r.company_id].in;
           if (myIn) {
-            const inTime = new Date(myIn.timestamp).getTime();
-            const outTime = new Date(r.timestamp).getTime();
-            const diff = (outTime - inTime) / (1000 * 60 * 60);
+            const inTime = new Date(myIn.timestamp.replace(' ', 'T')).getTime();
+            const diffHours = (rowTime - inTime) / (1000 * 60 * 60);
 
-            // Tanggapin ang Out kung ito ay 0-16 hours pagkatapos ng In
-            if (diff > 0 && diff < 16) {
+            // Valid partner kung ang Out ay 0-16 hours pagkatapos ng In
+            if (diffHours > 0 && diffHours < 16) {
               m[r.company_id].out = r;
             }
           }
         }
       } catch (e) {
-        // Kung talagang corrupted ang data, log lang pero wag i-crash
-        console.error("Data error on row:", r.id, e);
+        // Wag i-skip, i-log lang kung may error talaga
+        console.error("Error processing row:", r.company_id, e);
       }
     });
 
