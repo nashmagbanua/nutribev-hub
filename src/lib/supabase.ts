@@ -32,6 +32,17 @@ export const DEPARTMENTS: { value: Department; label: string }[] = [
 { value: "qa", label: "QA" },
 
 ];
+// Hanapin mo itong parteng ito sa supabase.ts at i-update:
+
+export const DEFAULT_AREA_CODES: { code: string; name: string }[] = [
+  { code: "1001", name: "QA" },
+  { code: "1002", name: "HR/Admin" },
+  { code: "1003", name: "Full Goods" },
+  { code: "1004", name: "Process" },
+  { code: "1005", name: "Production" },
+  { code: "1006", name: "Utilities" },
+  { code: "1007", name: "Maintenance" },
+];
 export type Profile = {
 id: string;
 company_id: string;
