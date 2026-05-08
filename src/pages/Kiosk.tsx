@@ -300,42 +300,51 @@ export default function Kiosk() {
 
       {/* MINIMAL CENTERED LINEAR LAYOUT */}
       <main className="relative z-10 container pb-10 pt-6 md:pt-10 flex flex-col items-center justify-center text-center min-h-[calc(100vh-160px)]">
-        <div className="text-primary-foreground space-y-2 mb-8">
-          <div className="text-xs md:text-sm opacity-90 uppercase tracking-[0.3em]">Asia/Manila</div>
-          <div className="flex items-center gap-3 justify-center text-5xl md:text-7xl font-extrabold tabular-nums drop-shadow">
-            <Clock className="h-10 w-10 md:h-14 md:w-14 opacity-90" /><span>{timeStr}</span>
+        <div className="text-primary-foreground space-y-2 mb-12">
+          <div className="text-xs md:text-sm opacity-80 uppercase tracking-[0.4em]">Asia/Manila</div>
+          <div className="flex items-center gap-3 justify-center text-6xl md:text-8xl font-extrabold tabular-nums drop-shadow-xl">
+            <span>{timeStr}</span>
           </div>
-          <div className="text-base md:text-lg opacity-95">{dateStr}</div>
+          <div className="text-lg md:text-xl opacity-90 font-light">{dateStr}</div>
         </div>
 
-        <div className="w-full max-w-md rounded-2xl bg-white/95 dark:bg-card/95 backdrop-blur-xl shadow-elegant p-6 md:p-8 border border-white/40">
+        {/* INPUT AREA: Wala nang white box, linya na lang */}
+        <div className="w-full max-w-md px-6">
           <Input
-            ref={inputRef} value={code}
+            ref={inputRef} 
+            value={code}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Enter Company ID"
+            placeholder="ENTER COMPANY ID"
             inputMode="numeric"
             maxLength={8}
-            className="h-16 text-3xl text-center rounded-2xl tracking-widest font-bold"
-            autoFocus disabled={busy || kioskDisabled}
+            className="h-20 text-5xl text-center border-t-0 border-l-0 border-r-0 border-b-2 border-white/30 bg-transparent rounded-none tracking-[0.5em] font-bold text-white placeholder:text-white/20 placeholder:tracking-normal focus-visible:ring-0 focus-visible:border-white focus-visible:border-b-4 transition-all duration-300"
+            autoFocus 
+            disabled={busy || kioskDisabled}
           />
-          {busy && <div className="mt-3 flex items-center justify-center text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing…</div>}
+          
+          {busy && (
+            <div className="mt-6 flex items-center justify-center text-white/60 text-sm animate-pulse font-medium tracking-widest">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
+              VERIFYING...
+            </div>
+          )}
         </div>
 
         {birthdayPeople.length > 0 && (
-          <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md text-primary-foreground px-4 py-2 text-sm border border-white/20">
-            <PartyPopper className="h-4 w-4" /> Birthdays today: {birthdayPeople.slice(0,3).map(p => p.full_name).join(", ")}{birthdayPeople.length > 3 ? ` +${birthdayPeople.length - 3}` : ""}
+          <div className="mt-12 inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md text-primary-foreground px-5 py-2 text-sm border border-white/10 shadow-lg">
+            <PartyPopper className="h-4 w-4 text-yellow-400" /> 
+            <span>Birthdays today: {birthdayPeople.slice(0,3).map(p => p.full_name).join(", ")}{birthdayPeople.length > 3 ? ` +${birthdayPeople.length - 3}` : ""}</span>
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-primary-foreground/90 text-xs">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-primary-foreground/80 text-xs">
           <FacilityChip label="Canteen" status={(settings?.canteen_status ?? "open") as Status} />
           <FacilityChip label="Clinic" status={(settings?.clinic_status ?? "open") as Status} />
         </div>
 
-        {geoError && <p className="mt-4 text-center text-xs text-warning/90">⚠ {geoError}</p>}
+        {geoError && <p className="mt-6 text-center text-xs text-red-200/80 bg-red-500/20 py-2 px-4 rounded-full backdrop-blur-sm">⚠ {geoError}</p>}
       </main>
-
       {/* Confirmation overlay — centered, bold name, random greeting */}
       {confirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm animate-fade-in p-4">
