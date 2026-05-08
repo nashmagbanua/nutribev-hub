@@ -152,16 +152,26 @@ export default function Kiosk() {
 
   const openAreaView = async (areaCode: AreaCode) => {
     const people = profiles.filter(p => p.area_code === areaCode.code);
+    
+    // ADJUSTMENT: Mula 12:00 AM Today hanggang 8:00 AM Bukas
     const startUtc = new Date(`${todayPH}T00:00:00+08:00`).toISOString();
-    const endUtc = new Date(`${todayPH}T23:59:59+08:00`).toISOString();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowPH = phDateKey(tomorrow);
+    const endUtc = new Date(`${tomorrowPH}T08:00:00+08:00`).toISOString();
+
     const ids = people.map(p => p.company_id);
     let today: AttendanceRow[] = [];
     if (ids.length) {
-      const { data } = await supabase.from("attendance").select("*").in("company_id", ids).gte("timestamp", startUtc).lte("timestamp", endUtc);
+      const { data } = await supabase.from("attendance")
+        .select("*")
+        .in("company_id", ids)
+        .gte("timestamp", startUtc)
+        .lte("timestamp", endUtc)
+        .order("timestamp", { ascending: true }); // Mahalaga ang order
       today = (data as AttendanceRow[]) ?? [];
     }
     setAreaView({ code: areaCode, people, today });
-    // Auto-close after 25s
     setTimeout(() => setAreaView(null), 25000);
   };
 
@@ -381,23 +391,42 @@ export default function Kiosk() {
                   {areaView.people
                     .slice()
                     .sort((a, b) => a.full_name.localeCompare(b.full_name))
-                    .map(p => {
-                      const myLogs = areaView.today.filter(t => t.company_id === p.company_id);
-                      const inLog = myLogs.find(l => l.type === "time_in");
-                      const outLog = myLogs.find(l => l.type === "time_out");
-                      const status = outLog ? "Timed Out" : inLog ? "Timed In" : "Absent";
-                      const statusColor = outLog ? "secondary" : inLog ? "default" : "outline";
-                      const time = outLog
-                        ? formatPH(outLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
-                        : inLog ? formatPH(inLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
-                      return (
-                        <tr key={p.id} className="border-t border-border">
-                          <td className="p-3 font-medium">{p.full_name}</td>
-                          <td className="p-3"><Badge variant={statusColor as any} className="rounded-lg">{status}</Badge></td>
-                          <td className="p-3 font-mono text-xs">{time}</td>
-                        </tr>
-                      );
-                    })}
+                    // Hanapin ang p.map sa loob ng DialogContent at palitan ang logic nito:
+.map(p => {
+  const myLogs = areaView.today.filter(t => t.company_id === p.company_id);
+  
+  // Hanapin ang Time In na pasok sa shift (Today)
+  const inLog = myLogs.find(l => l.type === "time_in" && phDateKey(l.timestamp) === todayPH);
+  
+  // Hanapin ang Time Out:
+  // Pwedeng Time Out today (Day Shift) OR Time Out bukas ng madaling araw (Night Shift)
+  const outLog = myLogs.find(l => {
+    if (l.type !== "time_out") return false;
+    
+    // Kung ang Time Out ay within the same day as Time In
+    if (inLog && phDateKey(l.timestamp) === phDateKey(inLog.timestamp)) return true;
+    
+    // Kung ang Time Out ay madaling araw ng susunod na araw (Night Shift)
+    const logHour = new Date(l.timestamp).getHours(); // Local hour
+    if (logHour < 8 && inLog) return true; 
+
+    return false;
+  });
+
+  const status = outLog ? "Timed Out" : inLog ? "Timed In" : "Absent";
+  const statusColor = outLog ? "secondary" : inLog ? "default" : "outline";
+  const time = outLog
+    ? formatPH(outLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
+    : inLog ? formatPH(inLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
+  
+  return (
+    <tr key={p.id} className="border-t border-border">
+      <td className="p-3 font-medium">{p.full_name}</td>
+      <td className="p-3"><Badge variant={statusColor as any} className="rounded-lg">{status}</Badge></td>
+      <td className="p-3 font-mono text-xs">{time}</td>
+    </tr>
+  );
+})
                 </tbody>
               </table>
             </div>
