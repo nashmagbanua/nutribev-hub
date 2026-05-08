@@ -308,28 +308,32 @@ export default function Kiosk() {
           <div className="text-lg md:text-xl opacity-90 font-light">{dateStr}</div>
         </div>
 
-        {/* INPUT AREA: Wala nang white box, linya na lang */}
-        <div className="w-full max-w-md px-6">
-          <Input
-            ref={inputRef} 
-            value={code}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={onKey}
-            placeholder="ENTER COMPANY ID"
-            inputMode="numeric"
-            maxLength={8}
-            className="h-20 text-5xl text-center border-t-0 border-l-0 border-r-0 border-b-2 border-white/30 bg-transparent rounded-none tracking-[0.5em] font-bold text-white placeholder:text-white/20 placeholder:tracking-normal focus-visible:ring-0 focus-visible:border-white focus-visible:border-b-4 transition-all duration-300"
-            autoFocus 
-            disabled={busy || kioskDisabled}
-          />
-          
-          {busy && (
-            <div className="mt-6 flex items-center justify-center text-white/60 text-sm animate-pulse font-medium tracking-widest">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
-              VERIFYING...
-            </div>
-          )}
-        </div>
+       <div className="w-full max-w-lg px-6">
+  <Input
+    ref={inputRef} 
+    value={code}
+    onChange={(e) => onChange(e.target.value)}
+    onKeyDown={onKey}
+    placeholder="ENTER COMPANY ID"
+    inputMode="numeric"
+    maxLength={8}
+    /* - border-none: Tanggal lahat ng borders
+       - bg-transparent: Transparent background
+       - focus-visible:ring-0: Walang asul na outline kahit i-click
+       - caret-white: Para yung blinking cursor ay puti pa rin
+    */
+    className="h-24 text-6xl text-center border-none bg-transparent shadow-none rounded-none tracking-[0.4em] font-black text-white placeholder:text-white/20 placeholder:tracking-normal focus-visible:ring-0 focus-visible:ring-offset-0 caret-white transition-all"
+    autoFocus 
+    disabled={busy || kioskDisabled}
+  />
+  
+  {busy && (
+    <div className="mt-4 flex items-center justify-center text-white/40 text-sm tracking-[0.2em] animate-pulse">
+      <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
+      VERIFYING
+    </div>
+  )}
+</div>
 
         {birthdayPeople.length > 0 && (
           <div className="mt-12 inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md text-primary-foreground px-5 py-2 text-sm border border-white/10 shadow-lg">
