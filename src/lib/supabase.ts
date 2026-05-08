@@ -169,14 +169,31 @@ export const DEFAULT_AREA_CODES: { code: string; name: string }[] = [
   { code: "1007", name: "Maintenance" },
 ];
 
-export function phDateKey(d: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"
-  }).formatToParts(d);
-  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
+export function phDateKey(d: Date | string = new Date()): string {
+  try {
+    // 1. Siguraduhin na Date object ito. Kung string, i-convert muna.
+    const dateObj = typeof d === "string" ? new Date(d) : d;
 
+    // 2. Safety check: Kung "Invalid Date", ibalik ang empty string o default
+    if (isNaN(dateObj.getTime())) {
+      console.warn("phDateKey received an invalid date:", d);
+      return ""; 
+    }
+
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(dateObj);
+
+    const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  } catch (err) {
+    console.error("Critical error in phDateKey:", err);
+    return ""; // Huwag hayaang mag-crash ang buong app
+  }
+}
 export function phMonthDay(d: Date | string): string {
   const date = typeof d === "string" ? new Date(d + "T00:00:00") : d;
   const parts = new Intl.DateTimeFormat("en-CA", {
