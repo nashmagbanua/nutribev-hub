@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { supabase, formatPH, uploadImage, lastNameOf, DEFAULT_AREA_CODES, type Profile, type AttendanceRow, type Announcement, type KioskSettings, type AreaCode, type Message } from "@/lib/supabase";
+import {
+  formatPH, uploadImage, lastNameOf, DEFAULT_AREA_CODES,
+  type Profile, type AttendanceRow, type Announcement,
+  type KioskSettings, type AreaCode, type Message
+} from "@/lib/supabase";
+import { api } from "@/lib/api";
 import { AppHeader } from "@/components/AppHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -13,9 +18,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Search, UserPlus, Users, CalendarCheck, Megaphone, Trash2, Plus, Settings as SettingsIcon, Coffee, Stethoscope, Pencil, MapPin, Inbox as InboxIcon, Send, CheckCircle2, ImageIcon } from "lucide-react";
-import { format, subDays, startOfDay } from "date-fns";
+import {
+  Search, UserPlus, Users, CalendarCheck, Megaphone, Trash2, Plus,
+  Settings as SettingsIcon, Coffee, Stethoscope, Pencil, MapPin,
+  Inbox as InboxIcon, Send, CheckCircle2, ImageIcon
+} from "lucide-react";
+import { format } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+
+const PH_TZ = "Asia/Manila";
+/** Returns "YYYY-MM-DD" in Asia/Manila timezone. */
+const phDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-CA", { timeZone: PH_TZ });
+/** Returns "HH:MM" in 24-h Asia/Manila timezone. */
+const phTimeHHMM = (iso: string) =>
+  new Date(iso).toLocaleTimeString("en-GB", {
+    timeZone: PH_TZ, hour: "2-digit", minute: "2-digit", hour12: false,
+  });
 
 export default function HRDashboard() {
   const { profile } = useAuth();
@@ -33,26 +52,30 @@ export default function HRDashboard() {
   const [employeeFilter, setEmployeeFilter] = useState("");
 
   const loadAll = async () => {
-    const [p, a, ann, s, v, c, h, ac, m] = await Promise.all([
-      supabase.from("profiles").select("id, company_id, full_name, dob, role, avatar_url, is_approved, email, position, area_code").order("created_at", { ascending: false }),
-      supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(1000),
-      supabase.from("announcements").select("*").order("created_at", { ascending: false }),
-      supabase.from("kiosk_settings").select("*").limit(1).maybeSingle(),
-      supabase.from("visitors").select("*").order("time_in", { ascending: false }).limit(200),
-      supabase.from("clinic_requests").select("*").order("created_at", { ascending: false }).limit(200),
-      supabase.from("holidays").select("*").order("date", { ascending: true }),
-      supabase.from("area_codes").select("*").order("code"),
-      profile ? supabase.from("messages").select("*").or(`to_company_id.eq.${profile.company_id},from_company_id.eq.${profile.company_id}`).order("created_at", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
-    ]);
-    setProfiles((p.data as Profile[]) ?? []);
-    setAttendance((a.data as AttendanceRow[]) ?? []);
-    setAnnouncements((ann.data as Announcement[]) ?? []);
-    setSettings((s.data as KioskSettings) ?? null);
-    setVisitors(v.data ?? []);
-    setClinicReqs(c.data ?? []);
-    setHolidays(h.data ?? []);
-    setAreaCodes((ac.data as AreaCode[]) ?? []);
-    setMessages((m.data as Message[]) ?? []);
+    try {
+      const [p, a, ann, s, v, c, h, ac, m] = await Promise.all([
+        api.profiles.list(),
+        api.attendance.list(),
+        api.announcements.list(),
+        api.kioskSettings.get(),
+        api.visitors.list(),
+        api.clinicRequests.list(),
+        api.holidays.list(),
+        api.areaCodes.list(),
+        profile ? api.messages.list(profile.company_id) : Promise.resolve([]),
+      ]);
+      setProfiles((p as Profile[]) ?? []);
+      setAttendance((a as AttendanceRow[]) ?? []);
+      setAnnouncements((ann as Announcement[]) ?? []);
+      setSettings((s as KioskSettings) ?? null);
+      setVisitors((v as any[]) ?? []);
+      setClinicReqs((c as any[]) ?? []);
+      setHolidays((h as any[]) ?? []);
+      setAreaCodes((ac as AreaCode[]) ?? []);
+      setMessages((m as Message[]) ?? []);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to load dashboard data");
+    }
   };
 
   useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [profile?.company_id]);
@@ -61,33 +84,34 @@ export default function HRDashboard() {
     profiles.filter(p => !search || p.company_id?.toLowerCase().includes(search.toLowerCase()) || p.full_name?.toLowerCase().includes(search.toLowerCase())),
   [profiles, search]);
 
-  const filteredAttendance = useMemo(() => attendance.filter(r => {
-    if (dateFilter && format(new Date(r.timestamp), "yyyy-MM-dd") !== dateFilter) return false;
-    if (employeeFilter && !r.company_id.toLowerCase().includes(employeeFilter.toLowerCase())) return false;
-    return true;
-  }), [attendance, dateFilter, employeeFilter]);
-
   const toggleApproval = async (p: Profile) => {
     const next = !p.is_approved;
-    const { error } = await supabase.from("profiles").update({ is_approved: next }).eq("id", p.id);
-    if (error) return toast.error(error.message);
-    toast.success(`${p.full_name} ${next ? "approved" : "revoked"}`);
-    setProfiles(profiles.map(x => x.id === p.id ? { ...x, is_approved: next } : x));
+    try {
+      await api.profiles.update(p.id, { is_approved: next });
+      toast.success(`${p.full_name} ${next ? "approved" : "revoked"}`);
+      setProfiles(profiles.map(x => x.id === p.id ? { ...x, is_approved: next } : x));
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  // Analytics: last 7 days attendance counts
   const chartData = useMemo(() => {
-    const days = Array.from({ length: 7 }).map((_, i) => startOfDay(subDays(new Date(), 6 - i)));
-    return days.map(d => {
-      const key = format(d, "yyyy-MM-dd");
-      const count = new Set(attendance.filter(r => format(new Date(r.timestamp), "yyyy-MM-dd") === key && r.type === "time_in").map(r => r.company_id)).size;
-      return { day: format(d, "MMM d"), present: count };
+    const now = new Date();
+    return Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (6 - i));
+      const key = d.toLocaleDateString("en-CA", { timeZone: PH_TZ });
+      const label = d.toLocaleDateString("en-US", { timeZone: PH_TZ, month: "short", day: "numeric" });
+      const count = new Set(
+        attendance.filter(r => phDate(r.timestamp) === key && r.type === "time_in").map(r => r.company_id)
+      ).size;
+      return { day: label, present: count };
     });
   }, [attendance]);
 
   const totalEmployees = profiles.length;
-  const todayKey = format(new Date(), "yyyy-MM-dd");
-  const presentToday = new Set(attendance.filter(r => format(new Date(r.timestamp), "yyyy-MM-dd") === todayKey && r.type === "time_in").map(r => r.company_id)).size;
+  const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: PH_TZ });
+  const presentToday = new Set(
+    attendance.filter(r => phDate(r.timestamp) === todayKey && r.type === "time_in").map(r => r.company_id)
+  ).size;
   const rate = totalEmployees ? Math.round((presentToday / totalEmployees) * 100) : 0;
 
   if (!profile) return null;
@@ -101,7 +125,6 @@ export default function HRDashboard() {
           <p className="text-muted-foreground">Manage employees, monitor attendance and publish announcements.</p>
         </div>
 
-        {/* KPIs */}
         <div className="grid sm:grid-cols-3 gap-4">
           <Kpi label="Total Employees" value={totalEmployees} icon={<Users className="h-5 w-5" />} />
           <Kpi label="Present Today" value={presentToday} icon={<CalendarCheck className="h-5 w-5" />} />
@@ -168,9 +191,10 @@ export default function HRDashboard() {
                           <EditEmployeeDialog employee={p} areaCodes={areaCodes} onSaved={loadAll} />
                           <Button size="icon" variant="ghost" onClick={async () => {
                             if (!confirm(`Delete ${p.full_name}? This cannot be undone.`)) return;
-                            const { error } = await supabase.from("profiles").delete().eq("id", p.id);
-                            if (error) return toast.error(error.message);
-                            toast.success("Employee deleted"); loadAll();
+                            try {
+                              await api.profiles.delete(p.id);
+                              toast.success("Employee deleted"); loadAll();
+                            } catch (e: any) { toast.error(e.message); }
                           }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         </div>
                       </td>
@@ -182,7 +206,7 @@ export default function HRDashboard() {
             </div>
           </TabsContent>
 
-          {/* ATTENDANCE — daily pairs with shift, late, OT */}
+          {/* ATTENDANCE */}
           <TabsContent value="attendance" className="space-y-4">
             <div className="flex flex-wrap gap-3">
               <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="rounded-xl max-w-[200px]" />
@@ -190,9 +214,11 @@ export default function HRDashboard() {
               <Button variant="outline" onClick={() => { setDateFilter(""); setEmployeeFilter(""); }} className="rounded-xl">Clear</Button>
             </div>
             <AttendanceTable
-              attendance={filteredAttendance}
+              attendance={attendance}
               profiles={profiles}
               settings={settings}
+              dateFilter={dateFilter}
+              employeeFilter={employeeFilter}
               onChanged={loadAll}
             />
           </TabsContent>
@@ -224,15 +250,16 @@ export default function HRDashboard() {
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2"><Megaphone className="h-4 w-4 text-primary" /><h4 className="font-bold">{a.title}</h4></div>
                     <Button size="icon" variant="ghost" onClick={async () => {
-                      await supabase.from("announcements").delete().eq("id", a.id);
-                      toast.success("Deleted"); loadAll();
+                      try { await api.announcements.delete(a.id); toast.success("Deleted"); loadAll(); }
+                      catch (e: any) { toast.error(e.message); }
                     }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>
                   {a.image_url && <img src={a.image_url} alt={a.title} className="rounded-xl mb-3 max-h-40 w-full object-cover" />}
                   {a.body && <p className="text-sm text-muted-foreground">{a.body}</p>}
                   <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
                     <Switch checked={a.active} onCheckedChange={async v => {
-                      await supabase.from("announcements").update({ active: v }).eq("id", a.id); loadAll();
+                      try { await api.announcements.update(a.id, { active: v }); loadAll(); }
+                      catch (e: any) { toast.error(e.message); }
                     }} /> {a.active ? "Active" : "Hidden"}
                   </div>
                 </div>
@@ -240,7 +267,7 @@ export default function HRDashboard() {
               {announcements.length === 0 && <p className="text-muted-foreground">No announcements yet.</p>}
             </div>
           </TabsContent>
-          {/* SETTINGS */}
+
           <TabsContent value="areas">
             <AreaCodesPanel rows={areaCodes} onChanged={loadAll} />
           </TabsContent>
@@ -285,23 +312,25 @@ function AddEmployeeDialog({ onAdded, areaCodes }: { onAdded: () => void; areaCo
   const submit = async () => {
     if (!form.company_id || !form.full_name || !form.password) { toast.error("Company ID, name, and password are required"); return; }
     setSaving(true);
-    const { error } = await supabase.from("profiles").insert({
-      company_id: form.company_id.trim(),
-      full_name: form.full_name.trim(),
-      password: form.password,
-      role: form.role,
-      dob: form.dob || null,
-      email: form.email.trim() || null,
-      position: form.position.trim() || null,
-      area_code: form.area_code || null,
-      is_approved: true,
-    });
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Employee added");
-    setOpen(false);
-    setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "", area_code: "" });
-    onAdded();
+    try {
+      await api.profiles.create({
+        id: crypto.randomUUID(),
+        company_id: form.company_id.trim(),
+        full_name: form.full_name.trim(),
+        password: form.password,
+        role: form.role,
+        dob: form.dob || null,
+        email: form.email.trim() || null,
+        position: form.position.trim() || null,
+        area_code: form.area_code || null,
+        is_approved: true,
+      });
+      toast.success("Employee added");
+      setOpen(false);
+      setForm({ company_id: "", full_name: "", password: "", role: "Employee", dob: "", email: "", position: "", area_code: "" });
+      onAdded();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -346,17 +375,18 @@ function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profil
   const [saving, setSaving] = useState(false);
   const submit = async () => {
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({
-      full_name: form.full_name.trim(),
-      role: form.role,
-      dob: form.dob || null,
-      email: form.email.trim() || null,
-      position: form.position.trim() || null,
-      area_code: form.area_code || null,
-    }).eq("id", employee.id);
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Employee updated"); setOpen(false); onSaved();
+    try {
+      await api.profiles.update(employee.id, {
+        full_name: form.full_name.trim(),
+        role: form.role,
+        dob: form.dob || null,
+        email: form.email.trim() || null,
+        position: form.position.trim() || null,
+        area_code: form.area_code || null,
+      });
+      toast.success("Employee updated"); setOpen(false); onSaved();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSaving(false); }
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -402,8 +432,7 @@ function AnnouncementForm({ onAdded }: { onAdded: () => void }) {
         if (file.size > 2 * 1024 * 1024) { toast.warning("File large — compressing…"); }
         image_url = await uploadImage("uploads", `announcements/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`, file);
       }
-      const { error } = await supabase.from("announcements").insert({ ...form, image_url, active: true });
-      if (error) throw error;
+      await api.announcements.create({ ...form, image_url, active: true });
       toast.success("Announcement published");
       setForm({ title: "", body: "" }); setFile(null);
       onAdded();
@@ -429,52 +458,124 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
 
-function AttendanceTable({ attendance, profiles, settings, onChanged }: { attendance: AttendanceRow[]; profiles: Profile[]; settings: KioskSettings | null; onChanged: () => void }) {
+function AttendanceTable({
+  attendance, profiles, settings, dateFilter, employeeFilter, onChanged,
+}: {
+  attendance: AttendanceRow[];
+  profiles: Profile[];
+  settings: KioskSettings | null;
+  dateFilter: string;
+  employeeFilter: string;
+  onChanged: () => void;
+}) {
   const profileMap = useMemo(() => {
     const m: Record<string, Profile> = {};
     profiles.forEach(p => { m[p.company_id] = p; });
     return m;
   }, [profiles]);
 
+  /**
+   * Pair-based operational workday grouping.
+   *
+   * Walk each employee's records in chronological order.
+   * Match every time_out with the nearest preceding unpaired time_in.
+   * The row's operational date is ALWAYS anchored to the time_in record —
+   * so a night-shift pair (time_in May 6 18:00, time_out May 7 06:00)
+   * shows up on May 6, not split across two calendar days.
+   */
   const grouped = useMemo(() => {
-    const map: Record<string, { date: string; companyId: string; in?: AttendanceRow; out?: AttendanceRow }> = {};
-    attendance.forEach(r => {
-      const date = formatPH(r.timestamp, { year: "numeric", month: "2-digit", day: "2-digit" });
-      const key = `${r.company_id}|${date}`;
-      map[key] = map[key] ?? { date, companyId: r.company_id };
-      if (r.type === "time_in") map[key].in = r;
-      else map[key].out = r;
-    });
-    return Object.values(map).sort((a, b) => (b.date + b.companyId).localeCompare(a.date + a.companyId));
-  }, [attendance]);
+    type Pair = {
+      date: string;
+      companyId: string;
+      in?: AttendanceRow;
+      out?: AttendanceRow;
+      sortKey: number;
+    };
 
-  const lateDay = settings?.late_threshold_day ?? "06:05";
+    const byEmployee: Record<string, AttendanceRow[]> = {};
+    attendance.forEach(r => {
+      byEmployee[r.company_id] = byEmployee[r.company_id] ?? [];
+      byEmployee[r.company_id].push(r);
+    });
+
+    const pairs: Pair[] = [];
+
+    Object.entries(byEmployee).forEach(([companyId, records]) => {
+      const sorted = [...records].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      let openIn: AttendanceRow | null = null;
+
+      sorted.forEach(r => {
+        if (r.type === "time_in") {
+          if (openIn) {
+            // Consecutive time_ins — emit previous as incomplete
+            pairs.push({ companyId, date: phDate(openIn.timestamp), in: openIn, sortKey: new Date(openIn.timestamp).getTime() });
+          }
+          openIn = r;
+        } else {
+          if (openIn) {
+            // Pair the time_out with its time_in; date = time_in date (night-shift safe)
+            pairs.push({ companyId, date: phDate(openIn.timestamp), in: openIn, out: r, sortKey: new Date(openIn.timestamp).getTime() });
+            openIn = null;
+          } else {
+            // Orphan time_out (no preceding time_in)
+            pairs.push({ companyId, date: phDate(r.timestamp), out: r, sortKey: new Date(r.timestamp).getTime() });
+          }
+        }
+      });
+
+      if (openIn) {
+        pairs.push({ companyId, date: phDate(openIn.timestamp), in: openIn, sortKey: new Date(openIn.timestamp).getTime() });
+      }
+    });
+
+    return pairs
+      .filter(g => {
+        if (dateFilter && g.date !== dateFilter) return false;
+        if (employeeFilter) {
+          const q = employeeFilter.toLowerCase();
+          const prof = profileMap[g.companyId];
+          const matchId = g.companyId.toLowerCase().includes(q);
+          const matchName = (prof?.full_name ?? "").toLowerCase().includes(q);
+          if (!matchId && !matchName) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.sortKey - a.sortKey);
+  }, [attendance, dateFilter, employeeFilter, profileMap]);
+
+  const lateDay   = settings?.late_threshold_day   ?? "06:05";
   const lateNight = settings?.late_threshold_night ?? "18:05";
 
   const isLate = (row: AttendanceRow): boolean => {
-    if (!row) return false;
-    const t = formatPH(row.timestamp, { hour: "2-digit", minute: "2-digit", hour12: false });
+    const t = phTimeHHMM(row.timestamp);
     const threshold = row.shift === "night" ? lateNight : lateDay;
     return t > threshold;
   };
 
   const computeOT = (g: { in?: AttendanceRow; out?: AttendanceRow }): string => {
     if (!g.in || !g.out) return "—";
-    const outDate = new Date(g.out.timestamp);
-    const inDate = new Date(g.in.timestamp);
-    const shift = g.in.shift;
-    const inPHHour = parseInt(formatPH(inDate, { hour: "2-digit", hour12: false }));
-    const endPH = new Date(inDate);
-    if (shift === "day") {
-      endPH.setUTCHours(18 - 8, 0, 0, 0);
-      if (inPHHour >= 18) endPH.setUTCDate(endPH.getUTCDate() + 1);
+    const inMs  = new Date(g.in.timestamp).getTime();
+    const outMs = new Date(g.out.timestamp).getTime();
+    // Determine shift-end in UTC:
+    //   Day shift   ends 18:00 PH = 10:00 UTC
+    //   Night shift ends 06:00 PH = 22:00 UTC  (next UTC day relative to time_in)
+    const base = new Date(g.in.timestamp);
+    let shiftEndMs: number;
+    if (g.in.shift === "night") {
+      base.setUTCHours(22, 0, 0, 0); // 22:00 UTC = 06:00 PH
+      if (base.getTime() <= inMs) base.setUTCDate(base.getUTCDate() + 1);
+      shiftEndMs = base.getTime();
     } else {
-      endPH.setUTCHours(6 - 8, 0, 0, 0);
-      endPH.setUTCDate(endPH.getUTCDate() + 1);
+      base.setUTCHours(10, 0, 0, 0); // 10:00 UTC = 18:00 PH
+      if (base.getTime() <= inMs) base.setUTCDate(base.getUTCDate() + 1);
+      shiftEndMs = base.getTime();
     }
-    const diffMin = Math.round((outDate.getTime() - endPH.getTime()) / 60000);
+    const diffMin = Math.round((outMs - shiftEndMs) / 60000);
     if (diffMin <= 0) return "—";
-    const h = Math.floor(diffMin / 60); const m = diffMin % 60;
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
     return `${h}h ${m}m`;
   };
 
@@ -495,34 +596,41 @@ function AttendanceTable({ attendance, profiles, settings, onChanged }: { attend
           </tr>
         </thead>
         <tbody>
-          {grouped.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>}
+          {grouped.length === 0 && (
+            <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No attendance records.</td></tr>
+          )}
           {grouped.map(g => {
             const p = profileMap[g.companyId];
             const late = g.in ? isLate(g.in) : false;
             return (
-              <tr key={`${g.companyId}-${g.date}`} className="border-t border-border hover:bg-muted/30">
+              <tr key={`${g.companyId}-${g.in?.id ?? g.out?.id}`} className="border-t border-border hover:bg-muted/30">
                 <td className="p-4">{g.date}</td>
                 <td className="p-4 font-medium">{p?.full_name ?? g.companyId}</td>
                 <td className="p-4 text-muted-foreground">{p?.position ?? "—"}</td>
-                <td className="p-4">{g.in ? formatPH(g.in.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
+                <td className="p-4">{g.in  ? formatPH(g.in.timestamp,  { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
                 <td className="p-4">{g.out ? formatPH(g.out.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—"}</td>
-                <td className="p-4">{g.in?.shift ? <Badge variant="secondary" className="rounded-lg capitalize">{g.in.shift}</Badge> : "—"}</td>
+                <td className="p-4">
+                  {g.in?.shift
+                    ? <Badge variant="secondary" className="rounded-lg capitalize">{g.in.shift}</Badge>
+                    : "—"}
+                </td>
                 <td className="p-4">
                   {late
                     ? <Badge className="rounded-lg bg-warning/20 text-foreground border border-warning/40">Late</Badge>
-                    : g.in ? <Badge className="rounded-lg bg-success/15 text-success">On time</Badge> : <Badge variant="secondary" className="rounded-lg">—</Badge>}
+                    : g.in
+                      ? <Badge className="rounded-lg bg-success/15 text-success">On time</Badge>
+                      : <Badge variant="secondary" className="rounded-lg">—</Badge>}
                 </td>
                 <td className="p-4 font-mono text-xs">{computeOT(g)}</td>
                 <td className="p-4 text-right">
                   <div className="inline-flex gap-1">
-                    {g.in && <EditAttendanceDialog row={g.in} onSaved={onChanged} />}
+                    {g.in  && <EditAttendanceDialog row={g.in}  onSaved={onChanged} />}
                     {g.out && <EditAttendanceDialog row={g.out} onSaved={onChanged} />}
                     <Button size="icon" variant="ghost" onClick={async () => {
-                      if (!confirm("Delete this attendance record (both in/out for the day)?")) return;
+                      if (!confirm("Delete this attendance record (both in/out for the shift)?")) return;
                       const ids = [g.in?.id, g.out?.id].filter(Boolean) as string[];
-                      const { error } = await supabase.from("attendance").delete().in("id", ids);
-                      if (error) return toast.error(error.message);
-                      toast.success("Deleted"); onChanged();
+                      try { await api.attendance.deleteBatch(ids); toast.success("Deleted"); onChanged(); }
+                      catch (e: any) { toast.error(e.message); }
                     }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>
                 </td>
@@ -537,7 +645,6 @@ function AttendanceTable({ attendance, profiles, settings, onChanged }: { attend
 
 function EditAttendanceDialog({ row, onSaved }: { row: AttendanceRow; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
-  // datetime-local format yyyy-MM-ddTHH:mm in local time
   const toLocal = (iso: string) => {
     const d = new Date(iso);
     const pad = (n: number) => n.toString().padStart(2, "0");
@@ -547,11 +654,11 @@ function EditAttendanceDialog({ row, onSaved }: { row: AttendanceRow; onSaved: (
   const [saving, setSaving] = useState(false);
   const submit = async () => {
     setSaving(true);
-    const iso = new Date(val).toISOString();
-    const { error } = await supabase.from("attendance").update({ timestamp: iso }).eq("id", row.id);
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Updated"); setOpen(false); onSaved();
+    try {
+      await api.attendance.update(row.id, { timestamp: new Date(val).toISOString() });
+      toast.success("Updated"); setOpen(false); onSaved();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSaving(false); }
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -598,14 +705,12 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
 
   const save = async () => {
     setSaving(true);
-    const payload = { ...form, updated_at: new Date().toISOString() };
-    const { error } = settings
-      ? await supabase.from("kiosk_settings").update(payload).eq("id", settings.id)
-      : await supabase.from("kiosk_settings").insert(payload);
-    setSaving(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Settings saved.");
-    onSaved();
+    try {
+      await api.kioskSettings.upsert({ ...form, updated_at: new Date().toISOString() });
+      toast.success("Settings saved.");
+      onSaved();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -649,7 +754,7 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
       </div>
 
       <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
-        <h3 className="font-bold">Geofence (validation only — UI hidden on kiosk)</h3>
+        <h3 className="font-bold">Geofence</h3>
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5"><Label>Latitude</Label><Input type="number" step="any" value={form.geofence_lat ?? 0} onChange={e => setForm({ ...form, geofence_lat: parseFloat(e.target.value) })} className="rounded-xl" /></div>
           <div className="space-y-1.5"><Label>Longitude</Label><Input type="number" step="any" value={form.geofence_lng ?? 0} onChange={e => setForm({ ...form, geofence_lng: parseFloat(e.target.value) })} className="rounded-xl" /></div>
@@ -693,9 +798,10 @@ function VisitorsTable({ rows }: { rows: any[] }) {
 
 function ClinicTable({ rows, onChanged }: { rows: any[]; onChanged: () => void }) {
   const update = async (id: string, patch: any) => {
-    const { error } = await supabase.from("clinic_requests").update(patch).eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success("Updated"); onChanged();
+    try {
+      await api.clinicRequests.update(id, patch);
+      toast.success("Updated"); onChanged();
+    } catch (e: any) { toast.error(e.message); }
   };
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
@@ -744,15 +850,17 @@ function AreaCodesPanel({ rows, onChanged }: { rows: AreaCode[]; onChanged: () =
     const existing = new Set(rows.map(r => r.code));
     const toInsert = DEFAULT_AREA_CODES.filter(d => !existing.has(d.code)).map(d => ({ ...d, active: true }));
     if (toInsert.length === 0) { toast.info("All defaults already present."); return; }
-    const { error } = await supabase.from("area_codes").insert(toInsert);
-    if (error) return toast.error(error.message);
-    toast.success(`Seeded ${toInsert.length} area codes.`); onChanged();
+    try {
+      await api.areaCodes.batch(toInsert);
+      toast.success(`Seeded ${toInsert.length} area codes.`); onChanged();
+    } catch (e: any) { toast.error(e.message); }
   };
   const add = async () => {
     if (!form.code || !form.name) { toast.error("Code and name required"); return; }
-    const { error } = await supabase.from("area_codes").insert({ code: form.code.trim(), name: form.name.trim(), active: true });
-    if (error) return toast.error(error.message);
-    toast.success("Area added"); setForm({ code: "", name: "" }); onChanged();
+    try {
+      await api.areaCodes.create({ code: form.code.trim(), name: form.name.trim(), active: true });
+      toast.success("Area added"); setForm({ code: "", name: "" }); onChanged();
+    } catch (e: any) { toast.error(e.message); }
   };
   return (
     <div className="space-y-4">
@@ -778,13 +886,17 @@ function AreaCodesPanel({ rows, onChanged }: { rows: AreaCode[]; onChanged: () =
               <tr key={a.id} className="border-t border-border">
                 <td className="p-4 font-mono font-bold">{a.code}</td>
                 <td className="p-4 font-medium">{a.name}</td>
-                <td className="p-4"><Switch checked={a.active} onCheckedChange={async (v) => { await supabase.from("area_codes").update({ active: v }).eq("id", a.id); onChanged(); }} /></td>
+                <td className="p-4">
+                  <Switch checked={a.active} onCheckedChange={async (v) => {
+                    try { await api.areaCodes.update(a.id, { active: v }); onChanged(); }
+                    catch (e: any) { toast.error(e.message); }
+                  }} />
+                </td>
                 <td className="p-4 text-right">
                   <Button size="icon" variant="ghost" onClick={async () => {
                     if (!confirm(`Delete area ${a.code}?`)) return;
-                    const { error } = await supabase.from("area_codes").delete().eq("id", a.id);
-                    if (error) return toast.error(error.message);
-                    toast.success("Deleted"); onChanged();
+                    try { await api.areaCodes.delete(a.id); toast.success("Deleted"); onChanged(); }
+                    catch (e: any) { toast.error(e.message); }
                   }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </td>
               </tr>
@@ -804,13 +916,20 @@ function InboxPanel({ currentId, messages, profiles, onChanged }: { currentId: s
   const send = async (toId: string) => {
     const body = (reply[toId] ?? "").trim();
     if (!body) return;
-    const { error } = await supabase.from("messages").insert({ from_company_id: currentId, to_company_id: toId, body });
-    if (error) return toast.error(error.message);
-    setReply({ ...reply, [toId]: "" });
-    toast.success("Reply sent"); onChanged();
+    try {
+      await api.messages.create({ from_company_id: currentId, to_company_id: toId, body });
+      setReply({ ...reply, [toId]: "" });
+      toast.success("Reply sent"); onChanged();
+    } catch (e: any) { toast.error(e.message); }
   };
-  const markRead = async (id: string) => { await supabase.from("messages").update({ read: true }).eq("id", id); onChanged(); };
-  const remove = async (id: string) => { await supabase.from("messages").delete().eq("id", id); toast.success("Deleted"); onChanged(); };
+  const markRead = async (id: string) => {
+    try { await api.messages.update(id, { read: true }); onChanged(); }
+    catch (e: any) { toast.error(e.message); }
+  };
+  const remove = async (id: string) => {
+    try { await api.messages.delete(id); toast.success("Deleted"); onChanged(); }
+    catch (e: any) { toast.error(e.message); }
+  };
 
   return (
     <div className="space-y-3">
@@ -843,15 +962,18 @@ function HolidaysPanel({ rows, onChanged }: { rows: any[]; onChanged: () => void
   const [form, setForm] = useState({ name: "", date: "" });
   const add = async () => {
     if (!form.name || !form.date) { toast.error("Name and date required"); return; }
-    const { error } = await supabase.from("holidays").insert({ name: form.name, date: form.date, active: true });
-    if (error) return toast.error(error.message);
-    toast.success("Holiday added"); setForm({ name: "", date: "" }); onChanged();
+    try {
+      await api.holidays.create({ name: form.name, date: form.date, active: true });
+      toast.success("Holiday added"); setForm({ name: "", date: "" }); onChanged();
+    } catch (e: any) { toast.error(e.message); }
   };
   const toggle = async (id: string, active: boolean) => {
-    await supabase.from("holidays").update({ active }).eq("id", id); onChanged();
+    try { await api.holidays.update(id, { active }); onChanged(); }
+    catch (e: any) { toast.error(e.message); }
   };
   const remove = async (id: string) => {
-    await supabase.from("holidays").delete().eq("id", id); onChanged();
+    try { await api.holidays.delete(id); onChanged(); }
+    catch (e: any) { toast.error(e.message); }
   };
   return (
     <div className="space-y-4">
@@ -883,7 +1005,6 @@ function HolidaysPanel({ rows, onChanged }: { rows: any[]; onChanged: () => void
     </div>
   );
 }
-
 
 function StatusRow({ icon, label, value, onChange }: { icon: React.ReactNode; label: string; value: "open"|"closed"|"holiday"; onChange: (v: "open"|"closed"|"holiday") => void }) {
   return (
