@@ -49,31 +49,38 @@ export default function AttendanceList() {
     const m: Record<string, { in?: AttendanceRow; out?: AttendanceRow }> = {};
 
     rows.forEach(r => {
-      // SAFETY CHECK: Siguraduhin na valid ang timestamp bago i-process
-      if (!r.timestamp || isNaN(Date.parse(r.timestamp))) return;
+      // Mas maluwag na check: Basta may timestamp, ituloy ang processing
+      if (!r.timestamp || !r.company_id) return;
 
       try {
         if (!m[r.company_id]) m[r.company_id] = {};
 
-        // Hanapin ang Time In para sa piniling araw
+        // 1. Logic para sa Time In
         if (r.type === "time_in") {
-          if (phDateKey(r.timestamp) === date) {
+          // Gamitin ang phDateKey para i-match sa piniling 'date' sa UI
+          const rowDate = phDateKey(r.timestamp);
+          if (rowDate === date) {
             m[r.company_id].in = r;
           }
         } 
         
-        // Hanapin ang Time Out na valid partner (within 16 hours)
+        // 2. Logic para sa Time Out (Partnering)
         else if (r.type === "time_out") {
           const myIn = m[r.company_id].in;
           if (myIn) {
-            const diff = (new Date(r.timestamp).getTime() - new Date(myIn.timestamp).getTime()) / (1000 * 60 * 60);
+            const inTime = new Date(myIn.timestamp).getTime();
+            const outTime = new Date(r.timestamp).getTime();
+            const diff = (outTime - inTime) / (1000 * 60 * 60);
+
+            // Tanggapin ang Out kung ito ay 0-16 hours pagkatapos ng In
             if (diff > 0 && diff < 16) {
               m[r.company_id].out = r;
             }
           }
         }
       } catch (e) {
-        console.warn("Skipping invalid row:", r);
+        // Kung talagang corrupted ang data, log lang pero wag i-crash
+        console.error("Data error on row:", r.id, e);
       }
     });
 
