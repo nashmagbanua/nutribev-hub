@@ -386,48 +386,60 @@ export default function Kiosk() {
                 <thead className="bg-muted/50 text-left sticky top-0">
                   <tr><th className="p-3">Employee</th><th className="p-3">Status</th><th className="p-3">Time</th></tr>
                 </thead>
-                <tbody>
-                  {areaView.people.length === 0 && <tr><td colSpan={3} className="p-6 text-center text-muted-foreground">No employees assigned to this area.</td></tr>}
-                  {areaView.people
-                    .slice()
-                    .sort((a, b) => a.full_name.localeCompare(b.full_name))
-                    // Hanapin ang p.map sa loob ng DialogContent at palitan ang logic nito:
-.map(p => {
-  const myLogs = areaView.today.filter(t => t.company_id === p.company_id);
-  
-  // Hanapin ang Time In na pasok sa shift (Today)
-  const inLog = myLogs.find(l => l.type === "time_in" && phDateKey(l.timestamp) === todayPH);
-  
-  // Hanapin ang Time Out:
-  // Pwedeng Time Out today (Day Shift) OR Time Out bukas ng madaling araw (Night Shift)
-  const outLog = myLogs.find(l => {
-    if (l.type !== "time_out") return false;
-    
-    // Kung ang Time Out ay within the same day as Time In
-    if (inLog && phDateKey(l.timestamp) === phDateKey(inLog.timestamp)) return true;
-    
-    // Kung ang Time Out ay madaling araw ng susunod na araw (Night Shift)
-    const logHour = new Date(l.timestamp).getHours(); // Local hour
-    if (logHour < 8 && inLog) return true; 
-
-    return false;
-  });
-
-  const status = outLog ? "Timed Out" : inLog ? "Timed In" : "Absent";
-  const statusColor = outLog ? "secondary" : inLog ? "default" : "outline";
-  const time = outLog
-    ? formatPH(outLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
-    : inLog ? formatPH(inLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
-  
-  return (
-    <tr key={p.id} className="border-t border-border">
-      <td className="p-3 font-medium">{p.full_name}</td>
-      <td className="p-3"><Badge variant={statusColor as any} className="rounded-lg">{status}</Badge></td>
-      <td className="p-3 font-mono text-xs">{time}</td>
+<tbody>
+  {areaView.people.length === 0 && (
+    <tr>
+      <td colSpan={3} className="p-6 text-center text-muted-foreground">
+        No employees assigned to this area.
+      </td>
     </tr>
-  );
-})
-                </tbody>
+  )}
+  {areaView.people
+    .slice()
+    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+    .map((p) => {
+      const myLogs = areaView.today.filter((t) => t.company_id === p.company_id);
+
+      // 1. Hanapin ang Time In (Today)
+      const inLog = myLogs.find(
+        (l) => l.type === "time_in" && phDateKey(l.timestamp) === todayPH
+      );
+
+      // 2. Hanapin ang Time Out (Same day OR Next day early morning)
+      const outLog = myLogs.find((l) => {
+        if (l.type !== "time_out") return false;
+
+        // Case A: Day shift (Same day out)
+        if (inLog && phDateKey(l.timestamp) === phDateKey(inLog.timestamp)) return true;
+
+        // Case B: Night shift (Out before 8 AM the next day)
+        const logHour = new Date(l.timestamp).getHours();
+        if (logHour < 8 && inLog) return true;
+
+        return false;
+      });
+
+      const status = outLog ? "Timed Out" : inLog ? "Timed In" : "Absent";
+      const statusColor = outLog ? "secondary" : inLog ? "default" : "outline";
+      const time = outLog
+        ? formatPH(outLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
+        : inLog
+        ? formatPH(inLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
+        : "—";
+
+      return (
+        <tr key={p.id} className="border-t border-border">
+          <td className="p-3 font-medium">{p.full_name}</td>
+          <td className="p-3">
+            <Badge variant={statusColor as any} className="rounded-lg">
+              {status}
+            </Badge>
+          </td>
+          <td className="p-3 font-mono text-xs">{time}</td>
+        </tr>
+      );
+    })}
+</tbody>
               </table>
             </div>
           )}
