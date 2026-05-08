@@ -39,28 +39,32 @@ export default function AttendanceList() {
       setLoading(false);
     })();
   }, [date]);
-
-  const grouped = useMemo(() => {
+const grouped = useMemo(() => {
     const m: Record<string, { in?: AttendanceRow; out?: AttendanceRow }> = {};
 
     rows.forEach(r => {
       if (!m[r.company_id]) m[r.company_id] = {};
 
-      // Logic para sa Time In: Dapat pasok sa petsang pinili (Date Picker)
-      if (r.type === "time_in" && phDateKey(r.timestamp) === date) {
-        m[r.company_id].in = r;
+      // 1. Hanapin ang Time In na pasok sa shift ng piniling petsa
+      if (r.type === "time_in") {
+        // Tinitiyak natin na ang Time In ay nangyari sa piniling araw (PH Time)
+        if (phDateKey(r.timestamp) === date) {
+          m[r.company_id].in = r;
+        }
       } 
       
-      // Logic para sa Time Out: 
-      // Dapat ay sumunod sa nahanap na Time In (Same day or Early morning next day)
+      // 2. Hanapin ang Time Out na kapares ng Time In na iyon
       if (r.type === "time_out") {
         const myIn = m[r.company_id].in;
         if (myIn) {
-          // Tanggapin kung same day, o kung madaling araw ng susunod na araw (< 8 AM)
-          const isSameDay = phDateKey(r.timestamp) === date;
-          const isNextDayEarly = new Date(r.timestamp).getUTCHours() + 8 < 8; // simplified PH check
-          
-          if (isSameDay || isNextDayEarly) {
+          // Ang Time Out ay valid kung:
+          // - Same day nangyari (Day shift)
+          // - OR nangyari kinabukasan bago mag 10 AM (Night shift/OT)
+          const inTime = new Date(myIn.timestamp).getTime();
+          const outTime = new Date(r.timestamp).getTime();
+          const diffHours = (outTime - inTime) / (1000 * 60 * 60);
+
+          if (outTime > inTime && diffHours < 16) { // 16 hours max shift window
             m[r.company_id].out = r;
           }
         }
@@ -68,14 +72,13 @@ export default function AttendanceList() {
     });
 
     return Object.entries(m)
-      .filter(([, p]) => !!p.in) // Only show employees who have timed in on the selected date
+      .filter(([, p]) => !!p.in) 
       .sort(([a], [b]) => {
         const an = profiles[a]?.full_name ?? a;
         const bn = profiles[b]?.full_name ?? b;
         return lastNameOf(an).localeCompare(lastNameOf(bn));
       });
   }, [rows, profiles, date]);
-
   return (
     <div className="min-h-screen gradient-subtle">
       <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-30">
