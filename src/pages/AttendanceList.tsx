@@ -45,51 +45,53 @@ export default function AttendanceList() {
     })();
   }, [date]);
 
-  const grouped = useMemo(() => {
+const grouped = useMemo(() => {
     const m: Record<string, { in?: AttendanceRow; out?: AttendanceRow }> = {};
 
-    rows.forEach(r => {
-      // 1. Basic safety check
+    // Siguraduhin na ang rows ay naka-sort by time para tama ang pagkakasunod-sunod
+    const sortedRows = [...rows].sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    sortedRows.forEach(r => {
       if (!r.timestamp || !r.company_id) return;
 
       try {
-        // I-normalize ang timestamp para siguradong mabasa ng Date object
-        const cleanTimestamp = r.timestamp.replace(' ', 'T'); 
-        const rowTime = new Date(cleanTimestamp).getTime();
-        
-        if (isNaN(rowTime)) return; // Skip kung talagang sira ang data
-
         if (!m[r.company_id]) m[r.company_id] = {};
 
-        // 2. Logic para sa Time In
+        // 1. Check kung ang record na ito ay para sa piniling Petsa (Date Picker)
+        const rowDatePH = phDateKey(r.timestamp);
+
         if (r.type === "time_in") {
-          // I-match ang row date sa napiling date sa calendar
-          if (phDateKey(r.timestamp) === date) {
+          // Ituring na "In" kung ang date ay nag-match sa calendar
+          if (rowDatePH === date) {
             m[r.company_id].in = r;
           }
         } 
         
-        // 3. Logic para sa Time Out (Partnering)
         else if (r.type === "time_out") {
           const myIn = m[r.company_id].in;
+          // Partnering logic: Dapat may "In" muna bago magka-"Out"
           if (myIn) {
-            const inTime = new Date(myIn.timestamp.replace(' ', 'T')).getTime();
-            const diffHours = (rowTime - inTime) / (1000 * 60 * 60);
+            const inTime = new Date(myIn.timestamp).getTime();
+            const outTime = new Date(r.timestamp).getTime();
+            const diffHours = (outTime - inTime) / (1000 * 60 * 60);
 
-            // Valid partner kung ang Out ay 0-16 hours pagkatapos ng In
+            // Kung ang Out ay nangyari 0-16 hours pagkatapos ng In, ito ang kapares
+            // (Kahit lumagpas na sa madaling araw ng susunod na araw)
             if (diffHours > 0 && diffHours < 16) {
               m[r.company_id].out = r;
             }
           }
         }
       } catch (e) {
-        // Wag i-skip, i-log lang kung may error talaga
-        console.error("Error processing row:", r.company_id, e);
+        // Safe catch para hindi mag-crash ang UI
+        console.error("Attendance mapping error:", e);
       }
     });
 
     return Object.entries(m)
-      .filter(([, pair]) => !!pair.in)
+      .filter(([, pair]) => !!pair.in) // Ipakita lang yung mga pumasok sa piniling petsa
       .sort(([a], [b]) => {
         const an = profiles[a]?.full_name ?? a;
         const bn = profiles[b]?.full_name ?? b;
