@@ -206,7 +206,7 @@ export default function Kiosk() {
     }
     setAreaView({ code: areaCode, people, today });
     // Auto-close after 25s
-    setTimeout(() => setAreaView(null), 25000);
+    setTimeout(() => { setAreaView(null); setTimeout(() => inputRef.current?.focus(), 100); }, 25000);
   };
 
   const processCode = async (id: string) => {
@@ -280,17 +280,29 @@ export default function Kiosk() {
     }
   };
 
-  // Auto-submit when input reaches 6 digits, or on Enter
+  // Auto-submit rules:
+  //   4 digits → only if it matches a known special code or area code (so typing
+  //              continues freely toward 5-, 6-, 7-, 8-digit company IDs)
+  //   5 digits → VISITOR_CODE ("12345") only
+  //   6 digits → standard employee company ID
+  //   8 digits → ADMIN_SHORTCUT_CODE or 8-digit employee company ID
+  // Enter key always submits whatever is in the box (handled by onKey).
   const onChange = (v: string) => {
     const cleaned = v.replace(/\s+/g, "");
     setCode(cleaned);
-    // 4-char codes: area codes, emergency (0001), visitor (12345 is 5 chars handled by Enter).
-    // 6-digit codes: employee Company IDs.
-    // 8-digit code: ADMIN_SHORTCUT_CODE.
-    const is4Digit = /^\d{4}$/.test(cleaned);
-    const is6Digit = /^\d{6}$/.test(cleaned);
-    const is8Digit = /^\d{8}$/.test(cleaned);
-    if ((is4Digit || is6Digit || is8Digit) && !busy) {
+    if (busy) return;
+
+    if (/^\d{4}$/.test(cleaned)) {
+      // Only auto-fire for codes we know are exactly 4 digits.
+      const knownSpecial = cleaned === EMERGENCY_CODE;
+      const isAreaCode = areaCodes.some(a => a.code === cleaned);
+      if (knownSpecial || isAreaCode) processCode(cleaned);
+      // Otherwise user may be typing a longer ID — do nothing yet.
+    } else if (/^\d{5}$/.test(cleaned) && cleaned === VISITOR_CODE) {
+      processCode(cleaned);
+    } else if (/^\d{6}$/.test(cleaned)) {
+      processCode(cleaned);
+    } else if (/^\d{8}$/.test(cleaned)) {
       processCode(cleaned);
     }
   };
@@ -425,7 +437,7 @@ export default function Kiosk() {
         </div>
       )}
 
-      <VisitorDialog open={showVisitor} onOpenChange={setShowVisitor} />
+      <VisitorDialog open={showVisitor} onOpenChange={(v) => { setShowVisitor(v); if (!v) setTimeout(() => inputRef.current?.focus(), 100); }} />
 
       {/* Emergency Evacuation Dashboard */}
       <EmergencyDashboard
@@ -434,7 +446,7 @@ export default function Kiosk() {
       />
 
       {/* Area code overlay */}
-      <Dialog open={!!areaView} onOpenChange={(v) => !v && setAreaView(null)}>
+      <Dialog open={!!areaView} onOpenChange={(v) => { if (!v) { setAreaView(null); setTimeout(() => inputRef.current?.focus(), 100); } }}>
         <DialogContent className="rounded-2xl max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
