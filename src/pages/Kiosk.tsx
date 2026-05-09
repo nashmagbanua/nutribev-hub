@@ -252,7 +252,9 @@ export default function Kiosk() {
       }
 
       const ts = new Date();
-      const shift = action === "in" ? shiftFromTimeIn(ts) : null;
+    // Kung Time In, gamitin ang bagong logic (3PM cut-off).
+    // Kung Time Out, kopyahin natin ang shift mula sa huling "Time In" record para hindi maghiwalay sa dashboard.
+    const shift = action === "in" ? shiftFromTimeIn(ts) : (latest?.shift ?? null);
 
       const { error: insErr } = await supabase.from("attendance").insert({
         company_id: profile.company_id,
