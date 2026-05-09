@@ -128,46 +128,7 @@ export default function Kiosk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Live counters (inside now + active today) ──────────────────────────────
-  useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        // Fetch ALL attendance rows to compute latest-record-per-employee.
-        const { data: allRows } = await supabase
-          .from("attendance")
-          .select("company_id, type, timestamp")
-          .order("timestamp", { ascending: false });
-
-        const rows = (allRows ?? []) as AttendanceRow[];
-
-        // Latest record per employee → inside if time_in
-        const latestByEmp = new Map<string, AttendanceRow>();
-        for (const r of rows) {
-          if (!latestByEmp.has(r.company_id)) latestByEmp.set(r.company_id, r);
-        }
-        let inside = 0;
-        latestByEmp.forEach((r) => { if (r.type === "time_in") inside++; });
-        setInsideCount(inside);
-
-        // Active today = employees who have ANY record today (PH time)
-        const today = phDateKey(new Date());
-        const startUtc = new Date(`${today}T00:00:00+08:00`).toISOString();
-        const endUtc = new Date(`${today}T23:59:59+08:00`).toISOString();
-        const todayIds = new Set(
-          rows.filter((r) => r.timestamp >= startUtc && r.timestamp <= endUtc).map((r) => r.company_id)
-        );
-        setActiveTodayCount(todayIds.size);
-      } catch {
-        // Silently fail; counters just won't update
-      }
-    };
-
-    fetchCounts();
-    const t = window.setInterval(fetchCounts, 15_000); // Refresh every 15 s
-    return () => window.clearInterval(t);
-  }, []);
-
-
+  const radius = settings?.geofence_radius_m ?? DEFAULT_RADIUS_M;
   const centerLat = settings?.geofence_lat ?? COMPANY_LAT;
   const centerLng = settings?.geofence_lng ?? COMPANY_LNG;
   const distance = coords ? Math.round(haversineMeters(coords.lat, coords.lng, centerLat, centerLng)) : null;
@@ -185,6 +146,44 @@ export default function Kiosk() {
     () => profiles.filter(p => p.dob && phMonthDay(p.dob) === todayMD),
     [profiles, todayMD]
   );
+
+  // ── Live counters (inside now + active today) ──────────────────────────────
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const { data: allRows } = await supabase
+          .from("attendance")
+          .select("company_id, type, timestamp")
+          .order("timestamp", { ascending: false });
+
+        const rows = (allRows ?? []) as AttendanceRow[];
+
+        // Latest record per employee → inside if time_in
+        const latestByEmp = new Map<string, AttendanceRow>();
+        for (const r of rows) {
+          if (!latestByEmp.has(r.company_id)) latestByEmp.set(r.company_id, r);
+        }
+        let insideCnt = 0;
+        latestByEmp.forEach((r) => { if (r.type === "time_in") insideCnt++; });
+        setInsideCount(insideCnt);
+
+        // Active today = employees who have ANY record today (PH time)
+        const today = phDateKey(new Date());
+        const startUtc = new Date(`${today}T00:00:00+08:00`).toISOString();
+        const endUtc = new Date(`${today}T23:59:59+08:00`).toISOString();
+        const todayIds = new Set(
+          rows.filter((r) => r.timestamp >= startUtc && r.timestamp <= endUtc).map((r) => r.company_id)
+        );
+        setActiveTodayCount(todayIds.size);
+      } catch {
+        // Silently fail; counters just won't update
+      }
+    };
+
+    fetchCounts();
+    const t = window.setInterval(fetchCounts, 15_000);
+    return () => window.clearInterval(t);
+  }, []);
 
   const fireConfetti = () => {
     const burst = (origin: { x: number; y: number }) => confetti({
