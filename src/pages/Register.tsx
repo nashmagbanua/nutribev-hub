@@ -43,6 +43,7 @@ export default function Register() {
     if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) { toast.error("Invalid email."); return; }
 
     const areaCode = DEFAULT_AREA_CODES.find(a => a.name === form.area_name)?.code ?? null;
+    // area_name is now the human-readable name from DEFAULT_AREA_CODES (e.g. "HR & Admin")
 
     setLoading(true);
     try {
@@ -54,12 +55,12 @@ export default function Register() {
         company_id: form.company_id.trim(),
         full_name: form.full_name.trim(),
         email: form.email.trim() || null,
-        position: form.job_position,            // legacy mirror
+        position: form.job_position,            // legacy mirror (human-readable slug)
         job_position: form.job_position,
         department: form.department,
         dob: form.dob || null,
         password: form.password,
-        role: form.system_role === "hr_admin" ? "HR" : "Employee", // legacy mirror
+        role: ({"hr_admin":"HR","manager":"Manager","supervisor":"Supervisor","nurse":"Nurse","safety_officer":"Safety Officer"} as Record<string,string>)[form.system_role] ?? "Employee", // legacy mirror
         system_role: form.system_role,
         is_approved: false,
         area_code: areaCode,
@@ -150,4 +151,3 @@ export default function Register() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
-
