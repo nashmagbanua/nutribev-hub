@@ -9,8 +9,29 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 export type SystemRole = "employee" | "supervisor" | "nurse" | "safety_officer" | "hr_admin" | "manager";
-export type JobPosition = "mantech" | "opscrew" | "maintenance" | "qa" | "fullgoods";
-export type Department = "production" | "process" | "utilities" | "fullgoods" | "qa";
+export type JobPosition =
+  | "mantech"
+  | "opscrew"
+  | "maintenance_tech"
+  | "qa_inspector"
+  | "forklift_operator"
+  | "warehouseman"
+  | "supervisor"
+  | "department_head"
+  | "plant_manager"
+  | "hr_officer"
+  | "admin_staff"
+  | "nurse"
+  | "safety_officer";
+export type Department =
+  | "production"
+  | "process"
+  | "utilities"
+  | "fullgoods"
+  | "qa"
+  | "maintenance"
+  | "hr_admin"
+  | "safety";
 
 export const SYSTEM_ROLES: { value: SystemRole; label: string }[] = [
   { value: "employee", label: "Employee" },
@@ -21,18 +42,29 @@ export const SYSTEM_ROLES: { value: SystemRole; label: string }[] = [
   { value: "manager", label: "Manager" },
 ];
 export const JOB_POSITIONS: { value: JobPosition; label: string }[] = [
-  { value: "mantech", label: "Mantech" },
-  { value: "opscrew", label: "Opscrew" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "qa", label: "QA" },
-  { value: "fullgoods", label: "Full Goods" },
+  { value: "mantech",          label: "Mantech" },
+  { value: "opscrew",          label: "Opscrew" },
+  { value: "maintenance_tech", label: "Maintenance Technician" },
+  { value: "qa_inspector",     label: "QA Inspector" },
+  { value: "forklift_operator",label: "Forklift Operator" },
+  { value: "warehouseman",     label: "Warehouseman" },
+  { value: "supervisor",       label: "Supervisor" },
+  { value: "department_head",  label: "Department Head" },
+  { value: "plant_manager",    label: "Plant Manager" },
+  { value: "hr_officer",       label: "HR Officer" },
+  { value: "admin_staff",      label: "Admin Staff" },
+  { value: "nurse",            label: "Nurse" },
+  { value: "safety_officer",   label: "Safety Officer" },
 ];
 export const DEPARTMENTS: { value: Department; label: string }[] = [
   { value: "production", label: "Production" },
-  { value: "process", label: "Process" },
-  { value: "utilities", label: "Utilities" },
-  { value: "fullgoods", label: "Full Goods" },
-  { value: "qa", label: "QA" },
+  { value: "process",    label: "Process" },
+  { value: "utilities",  label: "Utilities" },
+  { value: "fullgoods",  label: "Full Goods" },
+  { value: "qa",         label: "QA" },
+  { value: "maintenance",label: "Maintenance" },
+  { value: "hr_admin",   label: "HR & Admin" },
+  { value: "safety",     label: "Safety" },
 ];
 
 export type Profile = {
@@ -155,45 +187,29 @@ export function withTimeout<T>(p: PromiseLike<T>, ms = 8000, label = "Request"):
 export const COMPANY_LAT = 14.258657284905194;
 export const COMPANY_LNG = 121.11928280273479;
 export const DEFAULT_RADIUS_M = 100;
-export const ADMIN_SHORTCUT_CODE = "0000";
-export const VISITOR_CODE = "1111";
+export const ADMIN_SHORTCUT_CODE = "11223344";
+export const VISITOR_CODE = "12345";
 
 /** Default area codes seeded by HR. */
 export const DEFAULT_AREA_CODES: { code: string; name: string }[] = [
   { code: "1001", name: "QA" },
-  { code: "1002", name: "HR/Admin" },
+  { code: "1002", name: "HR & Admin" },
   { code: "1003", name: "Full Goods" },
   { code: "1004", name: "Process" },
   { code: "1005", name: "Production" },
   { code: "1006", name: "Utilities" },
   { code: "1007", name: "Maintenance" },
+  { code: "1008", name: "Safety" },
 ];
 
-export function phDateKey(d: Date | string = new Date()): string {
-  try {
-    // 1. Siguraduhin na Date object ito. Kung string, i-convert muna.
-    const dateObj = typeof d === "string" ? new Date(d) : d;
-
-    // 2. Safety check: Kung "Invalid Date", ibalik ang empty string o default
-    if (isNaN(dateObj.getTime())) {
-      console.warn("phDateKey received an invalid date:", d);
-      return ""; 
-    }
-
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).formatToParts(dateObj);
-
-    const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
-    return `${get("year")}-${get("month")}-${get("day")}`;
-  } catch (err) {
-    console.error("Critical error in phDateKey:", err);
-    return ""; // Huwag hayaang mag-crash ang buong app
-  }
+export function phDateKey(d: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(d);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
+
 export function phMonthDay(d: Date | string): string {
   const date = typeof d === "string" ? new Date(d + "T00:00:00") : d;
   const parts = new Intl.DateTimeFormat("en-CA", {
