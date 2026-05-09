@@ -85,6 +85,22 @@ export default function Kiosk() {
     return () => clearInterval(t);
   }, []);
 
+  // Auto-close success modal kapag may nag-type agad
+useEffect(() => {
+  const handleKeyDown = () => {
+    if (confirm) {
+      setConfirm(null); // Isara agad ang modal kapag may pinindot na key
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  };
+
+  if (confirm) {
+    window.addEventListener("keydown", handleKeyDown);
+  }
+
+  return () => window.removeEventListener("keydown", handleKeyDown);
+}, [confirm]);
+
   useEffect(() => {
     (async () => {
       const [s, p, a, h, ac] = await Promise.all([
