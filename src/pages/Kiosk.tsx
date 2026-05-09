@@ -34,9 +34,11 @@ import { Clock, Loader2, ShieldCheck, UserPlus, LogIn as LogInIcon, PartyPopper,
 import factoryBg from "@/assets/factory-bg.webp";
 import abnLogo from "@/assets/abn-logo.svg";
 import confetti from "canvas-confetti";
+import { EmergencyDashboard } from "@/components/EmergencyDashboard";
 
 type Status = "open" | "closed" | "holiday";
 const IDLE_MS = 15000;
+const EMERGENCY_CODE = "0001";
 
 export default function Kiosk() {
   const [code, setCode] = useState("");
@@ -53,6 +55,10 @@ export default function Kiosk() {
   const [areaView, setAreaView] = useState<{ code: AreaCode; people: Profile[]; today: AttendanceRow[] } | null>(null);
   const [showVisitor, setShowVisitor] = useState(false);
   const [idle, setIdle] = useState(false);
+  const [showEmergency, setShowEmergency] = useState(false);
+  // Live counters for the kiosk screen
+  const [insideCount, setInsideCount] = useState<number | null>(null);
+  const [activeTodayCount, setActiveTodayCount] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const idleTimer = useRef<number | null>(null);
   const navigate = useNavigate();
@@ -122,7 +128,46 @@ export default function Kiosk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const radius = settings?.geofence_radius_m ?? DEFAULT_RADIUS_M;
+  // ── Live counters (inside now + active today) ──────────────────────────────
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        // Fetch ALL attendance rows to compute latest-record-per-employee.
+        const { data: allRows } = await supabase
+          .from("attendance")
+          .select("company_id, type, timestamp")
+          .order("timestamp", { ascending: false });
+
+        const rows = (allRows ?? []) as AttendanceRow[];
+
+        // Latest record per employee → inside if time_in
+        const latestByEmp = new Map<string, AttendanceRow>();
+        for (const r of rows) {
+          if (!latestByEmp.has(r.company_id)) latestByEmp.set(r.company_id, r);
+        }
+        let inside = 0;
+        latestByEmp.forEach((r) => { if (r.type === "time_in") inside++; });
+        setInsideCount(inside);
+
+        // Active today = employees who have ANY record today (PH time)
+        const today = phDateKey(new Date());
+        const startUtc = new Date(`${today}T00:00:00+08:00`).toISOString();
+        const endUtc = new Date(`${today}T23:59:59+08:00`).toISOString();
+        const todayIds = new Set(
+          rows.filter((r) => r.timestamp >= startUtc && r.timestamp <= endUtc).map((r) => r.company_id)
+        );
+        setActiveTodayCount(todayIds.size);
+      } catch {
+        // Silently fail; counters just won't update
+      }
+    };
+
+    fetchCounts();
+    const t = window.setInterval(fetchCounts, 15_000); // Refresh every 15 s
+    return () => window.clearInterval(t);
+  }, []);
+
+
   const centerLat = settings?.geofence_lat ?? COMPANY_LAT;
   const centerLng = settings?.geofence_lng ?? COMPANY_LNG;
   const distance = coords ? Math.round(haversineMeters(coords.lat, coords.lng, centerLat, centerLng)) : null;
@@ -152,32 +197,23 @@ export default function Kiosk() {
 
   const openAreaView = async (areaCode: AreaCode) => {
     const people = profiles.filter(p => p.area_code === areaCode.code);
-    
-    // ADJUSTMENT: Mula 12:00 AM Today hanggang 8:00 AM Bukas
     const startUtc = new Date(`${todayPH}T00:00:00+08:00`).toISOString();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowPH = phDateKey(tomorrow);
-    const endUtc = new Date(`${tomorrowPH}T08:00:00+08:00`).toISOString();
-
+    const endUtc = new Date(`${todayPH}T23:59:59+08:00`).toISOString();
     const ids = people.map(p => p.company_id);
     let today: AttendanceRow[] = [];
     if (ids.length) {
-      const { data } = await supabase.from("attendance")
-        .select("*")
-        .in("company_id", ids)
-        .gte("timestamp", startUtc)
-        .lte("timestamp", endUtc)
-        .order("timestamp", { ascending: true }); // Mahalaga ang order
+      const { data } = await supabase.from("attendance").select("*").in("company_id", ids).gte("timestamp", startUtc).lte("timestamp", endUtc);
       today = (data as AttendanceRow[]) ?? [];
     }
     setAreaView({ code: areaCode, people, today });
+    // Auto-close after 25s
     setTimeout(() => setAreaView(null), 25000);
   };
 
   const processCode = async (id: string) => {
     if (!id) return;
     if (id === ADMIN_SHORTCUT_CODE) { setCode(""); navigate("/attendance-list"); return; }
+    if (id === EMERGENCY_CODE) { setCode(""); setShowEmergency(true); return; }
     if (id === VISITOR_CODE) { setCode(""); setShowVisitor(true); return; }
 
     // Area code lookup (supervisor)
@@ -249,8 +285,13 @@ export default function Kiosk() {
   const onChange = (v: string) => {
     const cleaned = v.replace(/\s+/g, "");
     setCode(cleaned);
-    // Area / shortcut codes are 4–8 chars; employee Company IDs assumed 6 digits.
-    if (/^\d{6}$/.test(cleaned) && !busy) {
+    // 4-char codes: area codes, emergency (0001), visitor (12345 is 5 chars handled by Enter).
+    // 6-digit codes: employee Company IDs.
+    // 8-digit code: ADMIN_SHORTCUT_CODE.
+    const is4Digit = /^\d{4}$/.test(cleaned);
+    const is6Digit = /^\d{6}$/.test(cleaned);
+    const is8Digit = /^\d{8}$/.test(cleaned);
+    if ((is4Digit || is6Digit || is8Digit) && !busy) {
       processCode(cleaned);
     }
   };
@@ -300,55 +341,58 @@ export default function Kiosk() {
 
       {/* MINIMAL CENTERED LINEAR LAYOUT */}
       <main className="relative z-10 container pb-10 pt-6 md:pt-10 flex flex-col items-center justify-center text-center min-h-[calc(100vh-160px)]">
-        <div className="text-primary-foreground space-y-2 mb-12">
-          <div className="text-xs md:text-sm opacity-80 uppercase tracking-[0.4em]">Asia/Manila</div>
-          <div className="flex items-center gap-3 justify-center text-6xl md:text-8xl font-extrabold tabular-nums drop-shadow-xl">
-            <span>{timeStr}</span>
+        <div className="text-primary-foreground space-y-2 mb-8">
+          <div className="text-xs md:text-sm opacity-90 uppercase tracking-[0.3em]">Asia/Manila</div>
+          <div className="flex items-center gap-3 justify-center text-5xl md:text-7xl font-extrabold tabular-nums drop-shadow">
+            <Clock className="h-10 w-10 md:h-14 md:w-14 opacity-90" /><span>{timeStr}</span>
           </div>
-          <div className="text-lg md:text-xl opacity-90 font-light">{dateStr}</div>
+          <div className="text-base md:text-lg opacity-95">{dateStr}</div>
         </div>
 
-       <div className="w-full max-w-lg px-6">
-  <Input
-    ref={inputRef} 
-    value={code}
-    onChange={(e) => onChange(e.target.value)}
-    onKeyDown={onKey}
-    placeholder="ENTER COMPANY ID"
-    inputMode="numeric"
-    maxLength={8}
-    /* - border-none: Tanggal lahat ng borders
-       - bg-transparent: Transparent background
-       - focus-visible:ring-0: Walang asul na outline kahit i-click
-       - caret-white: Para yung blinking cursor ay puti pa rin
-    */
-    className="h-24 text-6xl text-center border-none bg-transparent shadow-none rounded-none tracking-[0.4em] font-black text-white placeholder:text-white/20 placeholder:tracking-normal focus-visible:ring-0 focus-visible:ring-offset-0 caret-white transition-all"
-    autoFocus 
-    disabled={busy || kioskDisabled}
-  />
-  
-  {busy && (
-    <div className="mt-4 flex items-center justify-center text-white/40 text-sm tracking-[0.2em] animate-pulse">
-      <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
-      VERIFYING
-    </div>
-  )}
-</div>
+        <div className="w-full max-w-md rounded-2xl bg-white/95 dark:bg-card/95 backdrop-blur-xl shadow-elegant p-6 md:p-8 border border-white/40">
+          <Input
+            ref={inputRef} value={code}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Enter Company ID"
+            inputMode="numeric"
+            maxLength={8}
+            className="h-16 text-3xl text-center rounded-2xl tracking-widest font-bold"
+            autoFocus disabled={busy || kioskDisabled}
+          />
+          {busy && <div className="mt-3 flex items-center justify-center text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing…</div>}
+        </div>
 
         {birthdayPeople.length > 0 && (
-          <div className="mt-12 inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md text-primary-foreground px-5 py-2 text-sm border border-white/10 shadow-lg">
-            <PartyPopper className="h-4 w-4 text-yellow-400" /> 
-            <span>Birthdays today: {birthdayPeople.slice(0,3).map(p => p.full_name).join(", ")}{birthdayPeople.length > 3 ? ` +${birthdayPeople.length - 3}` : ""}</span>
+          <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md text-primary-foreground px-4 py-2 text-sm border border-white/20">
+            <PartyPopper className="h-4 w-4" /> Birthdays today: {birthdayPeople.slice(0,3).map(p => p.full_name).join(", ")}{birthdayPeople.length > 3 ? ` +${birthdayPeople.length - 3}` : ""}
           </div>
         )}
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-primary-foreground/80 text-xs">
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-primary-foreground/90 text-xs">
           <FacilityChip label="Canteen" status={(settings?.canteen_status ?? "open") as Status} />
           <FacilityChip label="Clinic" status={(settings?.clinic_status ?? "open") as Status} />
         </div>
 
-        {geoError && <p className="mt-6 text-center text-xs text-red-200/80 bg-red-500/20 py-2 px-4 rounded-full backdrop-blur-sm">⚠ {geoError}</p>}
+        {geoError && <p className="mt-4 text-center text-xs text-warning/90">⚠ {geoError}</p>}
+
+        {/* Live counters */}
+        {(insideCount !== null || activeTodayCount !== null) && (
+          <div className="mt-5 flex items-center justify-center gap-3 flex-wrap">
+            {insideCount !== null && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md text-primary-foreground px-4 py-2 text-sm border border-white/20 font-medium tabular-nums">
+                👥 Inside Now: <strong>{insideCount}</strong>
+              </span>
+            )}
+            {activeTodayCount !== null && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md text-primary-foreground px-4 py-2 text-sm border border-white/20 font-medium tabular-nums">
+                🟢 Active Today: <strong>{activeTodayCount}</strong>
+              </span>
+            )}
+          </div>
+        )}
       </main>
+
       {/* Confirmation overlay — centered, bold name, random greeting */}
       {confirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm animate-fade-in p-4">
@@ -384,6 +428,12 @@ export default function Kiosk() {
 
       <VisitorDialog open={showVisitor} onOpenChange={setShowVisitor} />
 
+      {/* Emergency Evacuation Dashboard */}
+      <EmergencyDashboard
+        open={showEmergency}
+        onClose={() => { setShowEmergency(false); setTimeout(() => inputRef.current?.focus(), 100); }}
+      />
+
       {/* Area code overlay */}
       <Dialog open={!!areaView} onOpenChange={(v) => !v && setAreaView(null)}>
         <DialogContent className="rounded-2xl max-w-2xl">
@@ -399,67 +449,36 @@ export default function Kiosk() {
                 <thead className="bg-muted/50 text-left sticky top-0">
                   <tr><th className="p-3">Employee</th><th className="p-3">Status</th><th className="p-3">Time</th></tr>
                 </thead>
-<tbody>
-  {areaView.people.length === 0 && (
-    <tr>
-      <td colSpan={3} className="p-6 text-center text-muted-foreground">
-        No employees assigned to this area.
-      </td>
-    </tr>
-  )}
-  {areaView.people
-    .slice()
-    .sort((a, b) => a.full_name.localeCompare(b.full_name))
-    .map((p) => {
-      const myLogs = areaView.today.filter((t) => t.company_id === p.company_id);
-
-      // 1. Hanapin ang Time In (Today)
-      const inLog = myLogs.find(
-        (l) => l.type === "time_in" && phDateKey(l.timestamp) === todayPH
-      );
-
-      // 2. Hanapin ang Time Out (Same day OR Next day early morning)
-      const outLog = myLogs.find((l) => {
-        if (l.type !== "time_out") return false;
-
-        // Case A: Day shift (Same day out)
-        if (inLog && phDateKey(l.timestamp) === phDateKey(inLog.timestamp)) return true;
-
-        // Case B: Night shift (Out before 8 AM the next day)
-        const logHour = new Date(l.timestamp).getHours();
-        if (logHour < 8 && inLog) return true;
-
-        return false;
-      });
-
-      const status = outLog ? "Timed Out" : inLog ? "Timed In" : "Absent";
-      const statusColor = outLog ? "secondary" : inLog ? "default" : "outline";
-      const time = outLog
-        ? formatPH(outLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
-        : inLog
-        ? formatPH(inLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
-        : "—";
-
-      return (
-        <tr key={p.id} className="border-t border-border">
-          <td className="p-3 font-medium">{p.full_name}</td>
-          <td className="p-3">
-            <Badge variant={statusColor as any} className="rounded-lg">
-              {status}
-            </Badge>
-          </td>
-          <td className="p-3 font-mono text-xs">{time}</td>
-        </tr>
-      );
-    })}
-</tbody>
+                <tbody>
+                  {areaView.people.length === 0 && <tr><td colSpan={3} className="p-6 text-center text-muted-foreground">No employees assigned to this area.</td></tr>}
+                  {areaView.people
+                    .slice()
+                    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                    .map(p => {
+                      const myLogs = areaView.today.filter(t => t.company_id === p.company_id);
+                      const inLog = myLogs.find(l => l.type === "time_in");
+                      const outLog = myLogs.find(l => l.type === "time_out");
+                      const status = outLog ? "Timed Out" : inLog ? "Timed In" : "Absent";
+                      const statusColor = outLog ? "secondary" : inLog ? "default" : "outline";
+                      const time = outLog
+                        ? formatPH(outLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true })
+                        : inLog ? formatPH(inLog.timestamp, { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
+                      return (
+                        <tr key={p.id} className="border-t border-border">
+                          <td className="p-3 font-medium">{p.full_name}</td>
+                          <td className="p-3"><Badge variant={statusColor as any} className="rounded-lg">{status}</Badge></td>
+                          <td className="p-3 font-mono text-xs">{time}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
               </table>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {idle && !confirm && !showVisitor && !areaView && (
+      {idle && !confirm && !showVisitor && !areaView && !showEmergency && (
         <IdleAds birthdayPeople={birthdayPeople} announcements={announcements} onExit={() => { setIdle(false); inputRef.current?.focus(); }} />
       )}
     </div>
