@@ -11,20 +11,25 @@ export default function AttendanceList() {
   const [date, setDate] = useState<string>(() => phToday());
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-  const [areaCodes, setAreaCodes] = useState<Record<string, string>>({}); // code -> name
+  const [areaCodes, setAreaCodes] = useState<Record<string, string>>({}); 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     (async () => {
       setLoading(true);
+      // Simula ng piniling petsa
       const startUtc = new Date(`${date}T00:00:00+08:00`).toISOString();
-      const endUtc   = new Date(`${date}T23:59:59+08:00`).toISOString();
+      // Kukuha hanggang 12:00 PM ng susunod na araw para sa Night Shift Out
+      const nextDayEnd = new Date(new Date(`${date}T00:00:00+08:00`).getTime() + 36 * 60 * 60 * 1000);
+      const endUtc = nextDayEnd.toISOString();
+
       const [a, p, ac] = await Promise.all([
         supabase.from("attendance").select("*").gte("timestamp", startUtc).lte("timestamp", endUtc).order("timestamp"),
         supabase.from("profiles").select("id, company_id, full_name, position, role, area_code"),
         supabase.from("area_codes").select("code, name").eq("active", true),
       ]);
+
       setRows((a.data as AttendanceRow[]) ?? []);
       const profileMap: Record<string, Profile> = {};
       ((p.data as Profile[]) ?? []).forEach(pr => { profileMap[pr.company_id] = pr; });
@@ -36,21 +41,37 @@ export default function AttendanceList() {
     })();
   }, [date]);
 
-  // Group rows: latest time_in and latest time_out per employee
+  // Night Shift Pairing Logic
   const grouped = useMemo(() => {
     const m: Record<string, { in?: AttendanceRow; out?: AttendanceRow }> = {};
+    
+    const selectedDateStart = new Date(`${date}T00:00:00+08:00`).getTime();
+    const selectedDateEnd = new Date(`${date}T23:59:59+08:00`).getTime();
+
+    // 1. Hanapin ang unang valid na "Time In" sa loob ng piniling petsa
     rows.forEach(r => {
-      m[r.company_id] = m[r.company_id] ?? {};
-      if (r.type === "time_in") {
-        // Keep the EARLIEST time_in (first arrival)
-        if (!m[r.company_id].in || r.timestamp < m[r.company_id].in!.timestamp)
-          m[r.company_id].in = r;
-      } else {
-        // Keep the LATEST time_out (last departure)
-        if (!m[r.company_id].out || r.timestamp > m[r.company_id].out!.timestamp)
-          m[r.company_id].out = r;
+      const rowTime = new Date(r.timestamp).getTime();
+      if (r.type === "time_in" && rowTime >= selectedDateStart && rowTime <= selectedDateEnd) {
+        if (!m[r.company_id]) {
+          m[r.company_id] = { in: r };
+        }
       }
     });
+
+    // 2. I-pair ang bawat "In" sa susunod na "Out" (kahit cross-date)
+    rows.forEach(r => {
+      if (r.type === "time_out") {
+        const entry = m[r.company_id];
+        if (entry && entry.in && !entry.out) {
+          const inTime = new Date(entry.in.timestamp).getTime();
+          const outTime = new Date(r.timestamp).getTime();
+          if (outTime > inTime) {
+            entry.out = r;
+          }
+        }
+      }
+    });
+
     return Object.entries(m)
       .filter(([, p]) => !!p.in)
       .sort(([a], [b]) => {
@@ -58,9 +79,8 @@ export default function AttendanceList() {
         const bn = profiles[b]?.full_name ?? b;
         return lastNameOf(an).localeCompare(lastNameOf(bn));
       });
-  }, [rows, profiles]);
+  }, [rows, profiles, date]);
 
-  // Search filter
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return grouped;
@@ -76,7 +96,6 @@ export default function AttendanceList() {
     });
   }, [grouped, search, profiles, areaCodes]);
 
-  // Summary stats (always from full grouped, not filtered)
   const stats = useMemo(() => {
     const total   = grouped.length;
     const inside  = grouped.filter(([, p]) => !!p.in && !p.out).length;
@@ -86,7 +105,6 @@ export default function AttendanceList() {
     return { total, inside, out, day, night };
   }, [grouped]);
 
-  // CSV export of current filtered view
   const exportCSV = () => {
     const headers = ["Company ID", "Full Name", "Position", "Area", "Time In", "Time Out", "Shift", "Status"];
     const rowData = filtered.map(([companyId, pair]) => {
@@ -120,7 +138,6 @@ export default function AttendanceList() {
       </header>
 
       <main className="container py-8 space-y-6">
-        {/* Page title + date controls */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -144,7 +161,6 @@ export default function AttendanceList() {
           </div>
         </div>
 
-        {/* Summary stats */}
         {!loading && grouped.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <StatCard icon={<Users  className="h-5 w-5 text-primary" />}    label="Total Present" value={stats.total}  color="bg-primary/10 border-primary/20" />
@@ -155,7 +171,6 @@ export default function AttendanceList() {
           </div>
         )}
 
-        {/* Search */}
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
@@ -166,7 +181,6 @@ export default function AttendanceList() {
           />
         </div>
 
-        {/* Table */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left">
@@ -227,12 +241,6 @@ export default function AttendanceList() {
               })}
             </tbody>
           </table>
-          {!loading && filtered.length > 0 && (
-            <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
-              Showing {filtered.length} of {grouped.length} employee{grouped.length !== 1 ? "s" : ""}
-              {search && " — filtered by search"}
-            </div>
-          )}
         </div>
       </main>
     </div>
