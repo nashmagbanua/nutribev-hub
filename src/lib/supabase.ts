@@ -229,9 +229,26 @@ export function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: 
 }
 
 export function shiftFromTimeIn(d: Date): "day" | "night" {
-  const ph = new Date(d.getTime() + (8 * 60 + d.getTimezoneOffset()) * 60000);
-  const h = ph.getHours();
-  return h >= 5 && h < 18 ? "day" : "night";
+  // Kunin ang oras sa Philippine Time (Asia/Manila)
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: "Asia/Manila",
+    hour: "numeric",
+    hour12: false,
+  };
+  const h = parseInt(new Intl.DateTimeFormat("en-US", options).format(d));
+
+  /**
+   * FLEXIBLE SHIFT LOGIC:
+   * Night Shift: 3:00 PM (15:00) hanggang 2:59 AM (02:59)
+   * Day Shift: 3:00 AM (03:00) hanggang 2:59 PM (14:59)
+   * * Dahil dito, kung mag-in ka ng 3:00 PM o 5:46 PM, 
+   * mada-detect ka na agad bilang "night shift".
+   */
+  if (h >= 15 || h < 3) {
+    return "night";
+  }
+  
+  return "day";
 }
 
 export function nowInPH(): Date {
