@@ -582,7 +582,7 @@ function AddEmployeeDialog({ onAdded, areaCodes }: { onAdded: () => void; areaCo
           <UserPlus className="h-4 w-4 mr-2" />Add Employee
         </Button>
       </DialogTrigger>
-      <DialogContent className="rounded-2xl max-w-lg">
+      <DialogContent className="rounded-2xl max-w-lg" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Add Employee</DialogTitle></DialogHeader>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Company ID *"><Input value={form.company_id} onChange={e => setForm({ ...form, company_id: e.target.value })} placeholder="e.g. 100001" /></Field>
@@ -661,7 +661,7 @@ function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profil
       <DialogTrigger asChild>
         <Button size="icon" variant="ghost" title="Edit employee"><Pencil className="h-4 w-4" /></Button>
       </DialogTrigger>
-      <DialogContent className="rounded-2xl max-w-lg">
+      <DialogContent className="rounded-2xl max-w-lg" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Edit — {employee.full_name}</DialogTitle></DialogHeader>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
@@ -913,7 +913,7 @@ function EditAttendanceDialog({ row, label, onSaved }: { row: AttendanceRow; lab
             : <LogOut className="h-4 w-4 text-muted-foreground" />}
         </Button>
       </DialogTrigger>
-      <DialogContent className="rounded-2xl max-w-sm">
+      <DialogContent className="rounded-2xl max-w-sm" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Edit Time {label}</DialogTitle></DialogHeader>
         <Field label="Timestamp (local time)">
           <Input type="datetime-local" value={val} onChange={e => setVal(e.target.value)} className="rounded-xl" />
