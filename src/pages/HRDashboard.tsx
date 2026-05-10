@@ -605,7 +605,7 @@ function AddEmployeeDialog({ onAdded, areaCodes }: { onAdded: () => void; areaCo
             <Select value={form.area_code} onValueChange={v => setForm({ ...form, area_code: v })}>
               <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select area" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— None —</SelectItem>
+                <SelectItem value="__none__">— None —</SelectItem>
                 {areaCodes.map(a => <SelectItem key={a.id} value={a.code}>{a.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -683,10 +683,10 @@ function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profil
           </Field>
           <div className="sm:col-span-2">
             <Field label="Area">
-              <Select value={form.area_code} onValueChange={v => setForm({ ...form, area_code: v })}>
+              <Select value={form.area_code || "__none__"} onValueChange={v => setForm({ ...form, area_code: v === "__none__" ? "" : v })}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select area" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— None —</SelectItem>
+                  <SelectItem value="__none__">— None —</SelectItem>
                   {areaCodes.map(a => <SelectItem key={a.id} value={a.code}>{a.name}</SelectItem>)}
                 </SelectContent>
               </Select>
