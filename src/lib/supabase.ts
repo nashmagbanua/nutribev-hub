@@ -188,7 +188,7 @@ export function withTimeout<T>(p: PromiseLike<T>, ms = 8000, label = "Request"):
 export const COMPANY_LAT = 14.258657284905194;
 export const COMPANY_LNG = 121.11928280273479;
 export const DEFAULT_RADIUS_M = 100;
-export const ADMIN_SHORTCUT_CODE = "11223344";
+export const ADMIN_SHORTCUT_CODE = "0101";
 export const VISITOR_CODE = "12345";
 
 /** Default area codes seeded by HR. */
