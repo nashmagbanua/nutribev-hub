@@ -1053,24 +1053,31 @@ function ClinicTable({ rows, onChanged }: { rows: any[]; onChanged: () => void }
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
-      <table className="w-full text-sm min-w-[800px]">
+      <table className="w-full text-sm min-w-[1000px]">
         <thead className="bg-muted/50 text-left">
           <tr>
             <th className="p-4">Requested</th>
             <th className="p-4">Employee</th>
             <th className="p-4">Medicine</th>
+            <th className="p-4">Symptoms / Reason</th>
             <th className="p-4">Pickup</th>
             <th className="p-4">Status</th>
             <th className="p-4 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">No requests.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No requests.</td></tr>}
           {rows.map(r => (
             <tr key={r.id} className="border-t border-border hover:bg-muted/30">
               <td className="p-4 font-mono text-xs">{formatPH(r.created_at, { dateStyle: "short", timeStyle: "short" } as any)}</td>
-              <td className="p-4 font-medium">{r.employee_name}</td>
-              <td className="p-4">{r.medicine}</td>
+              <td className="p-4 font-medium">{r.employee_name}<div className="text-xs text-muted-foreground font-mono">{r.company_id}</div></td>
+              <td className="p-4 font-medium">{r.medicine}</td>
+              <td className="p-4 text-sm max-w-[200px]">
+                {r.symptoms
+                  ? <span className="text-foreground/90">{r.symptoms}</span>
+                  : <span className="text-muted-foreground">—</span>}
+                {r.notes && <div className="text-xs text-muted-foreground mt-0.5 italic">{r.notes}</div>}
+              </td>
               <td className="p-4 font-mono text-xs">{r.pickup_time ? formatPH(r.pickup_time, { dateStyle: "short", timeStyle: "short" } as any) : "—"}</td>
               <td className="p-4">
                 <Select value={r.status} onValueChange={v => update(r.id, { status: v, picked_up_at: v === "picked_up" ? new Date().toISOString() : r.picked_up_at })}>
