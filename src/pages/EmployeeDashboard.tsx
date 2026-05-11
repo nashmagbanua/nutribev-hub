@@ -20,6 +20,7 @@ import {
   Clock, LogIn, LogOut, Megaphone, CheckCircle2, AlertCircle,
   Briefcase, IdCard, Cake, MapPin, Building2, Pencil, ArrowUpRight,
 } from "lucide-react";
+import PPERequest from "./PPERequest";
 
 // ─── PH date helpers (no date-fns timezone bugs) ──────────────────────────────
 
