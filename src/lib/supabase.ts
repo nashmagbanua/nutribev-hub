@@ -115,6 +115,11 @@ export type Announcement = {
   created_at: string;
 };
 
+/**
+ * working_days: 7-char string, index 0=Sun … 6=Sat, "1"=work day, "0"=off.
+ * Default "1111110" = Mon–Sat work, Sun off.
+ * Example "1111111" = all 7 days.  "1111100" = Mon–Fri only.
+ */
 export type KioskSettings = {
   id: string;
   canteen_status: "open" | "closed" | "holiday";
@@ -125,8 +130,16 @@ export type KioskSettings = {
   geofence_lat: number;
   geofence_lng: number;
   holiday_mode: "allow" | "disable";
+  working_days: string | null;   // "1111110" Sun–Sat bitmask, null = Mon–Sat default
   updated_at: string;
 };
+
+/** Returns true if the given Date is a configured working day (PH timezone). */
+export function isWorkingDay(d: Date, workingDays?: string | null): boolean {
+  const mask = workingDays ?? "1111110"; // default Mon–Sat
+  const phDay = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Manila" })).getDay(); // 0=Sun
+  return mask[phDay] === "1";
+}
 
 export type Visitor = {
   id: string;
@@ -188,7 +201,7 @@ export function withTimeout<T>(p: PromiseLike<T>, ms = 8000, label = "Request"):
 export const COMPANY_LAT = 14.258657284905194;
 export const COMPANY_LNG = 121.11928280273479;
 export const DEFAULT_RADIUS_M = 100;
-export const ADMIN_SHORTCUT_CODE = "0101";
+export const ADMIN_SHORTCUT_CODE = "11223344";
 export const VISITOR_CODE = "12345";
 
 /** Default area codes seeded by HR. */
@@ -229,10 +242,22 @@ export function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: 
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+/**
+ * Determines shift from time-in timestamp (PH time).
+ *
+ * Schedule:  Day Shift   = 06:00 – 18:00  (early arrivals from 03:00 still count as Day)
+ *            Night Shift = 18:00 – 06:00
+ *
+ * The 03:00 lower bound catches employees who arrive early for the 06:00 Day shift.
+ * Anyone arriving between 18:00–03:00 is on Night shift.
+ */
 export function shiftFromTimeIn(d: Date): "day" | "night" {
   const ph = new Date(d.getTime() + (8 * 60 + d.getTimezoneOffset()) * 60000);
   const h = ph.getHours();
-  return h >= 5 && h < 18 ? "day" : "night";
+  // 03:00 ≤ h < 18:00  →  Day shift  (includes early-arrival window 03:00–06:00)
+  // 18:00 ≤ h < 24:00  →  Night shift
+  // 00:00 ≤ h < 03:00  →  Night shift (late into the night)
+  return h >= 3 && h < 18 ? "day" : "night";
 }
 
 export function nowInPH(): Date {
@@ -336,6 +361,27 @@ export async function uploadImage(
   // Cache-bust so updated images appear immediately.
   return `${data.publicUrl}?t=${Date.now()}`;
 }
+
+
+export type PPEItem = {
+  ppe_type: string;
+  size: string | null;
+  quantity: number;
+  reason: string;
+};
+
+export type PPERequest = {
+  id: string;
+  company_id: string;
+  employee_name: string;
+  items: PPEItem[];
+  urgency: "normal" | "urgent";
+  notes: string | null;
+  status: "pending" | "approved" | "issued" | "rejected";
+  requested_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+};
 
 /** Detect mobile UA — used to redirect kiosk to landing page on phones. */
 export function isMobileDevice(): boolean {
