@@ -3,7 +3,7 @@ import { useAuth } from "@/context/AuthContext";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import {
-  supabase, haversineMeters, shiftFromTimeIn, formatPH, withTimeout,
+  supabase, haversineMeters, shiftFromTimeIn, formatPH, withTimeout, isWorkingDay,
   COMPANY_LAT, COMPANY_LNG, DEFAULT_RADIUS_M, type KioskSettings,
 } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -62,6 +62,9 @@ export default function MobilePunch() {
   const shiftOpen = latest?.type === "time_in";
 
   const punch = async (action: "in" | "out") => {
+    if (!isWorkingDay(new Date(), settings?.working_days)) {
+      toast.error("No operations scheduled today. Contact HR if this is incorrect."); return;
+    }
     if (!inside) { toast.error("Outside company premises."); return; }
     if (action === "in" && shiftOpen) { toast.error("You already have an open shift. Time Out first."); return; }
     if (action === "out" && !shiftOpen) { toast.error("No open shift to Time Out from."); return; }
