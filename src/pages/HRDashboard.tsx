@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   supabase, formatPH, uploadImage, lastNameOf,
-  DEFAULT_AREA_CODES, SYSTEM_ROLES, JOB_POSITIONS,
+  DEFAULT_AREA_CODES, SYSTEM_ROLES, JOB_POSITIONS, isWorkingDay,
   type SystemRole, type JobPosition,
   type Profile, type AttendanceRow, type Announcement,
   type KioskSettings, type AreaCode, type Message,
@@ -1238,6 +1238,7 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
     geofence_lat:         settings?.geofence_lat         ?? 14.258657284905194,
     geofence_lng:         settings?.geofence_lng         ?? 121.11928280273479,
     holiday_mode:         settings?.holiday_mode         ?? "allow",
+    working_days:         settings?.working_days          ?? "1111110",
   });
   const [saving, setSaving] = useState(false);
 
@@ -1252,6 +1253,7 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
       geofence_lat:         settings.geofence_lat,
       geofence_lng:         settings.geofence_lng,
       holiday_mode:         settings.holiday_mode ?? "allow",
+      working_days:         settings.working_days  ?? "1111110",
     });
   }, [settings]);
 
@@ -1317,6 +1319,36 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
             <Input type="number" value={form.geofence_radius_m ?? 100} onChange={e => setForm({ ...form, geofence_radius_m: parseInt(e.target.value || "0") })} className="rounded-xl" />
           </div>
         </div>
+      </div>
+
+
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold">Working Days</h3>
+        <p className="text-xs text-muted-foreground">Select which days your company operates. Employees cannot time in on non-working days.</p>
+        <div className="grid grid-cols-7 gap-2">
+          {(["Sun","Mon","Tue","Wed","Thu","Fri","Sat"] as const).map((day, i) => {
+            const mask = (form.working_days ?? "1111110");
+            const active = mask[i] === "1";
+            return (
+              <button
+                key={day} type="button"
+                onClick={() => {
+                  const arr = (form.working_days ?? "1111110").split("");
+                  arr[i] = arr[i] === "1" ? "0" : "1";
+                  setForm({ ...form, working_days: arr.join("") });
+                }}
+                className={`rounded-xl py-2 text-xs font-bold border transition-colors ${
+                  active
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted text-muted-foreground border-border hover:border-primary"
+                }`}
+              >{day}</button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Current: {(form.working_days ?? "1111110").split("").map((b, i) => b === "1" ? ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][i] : null).filter(Boolean).join(", ") || "None"}
+        </p>
       </div>
 
       <div className="md:col-span-2">
