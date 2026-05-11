@@ -14,6 +14,7 @@ import {
   COMPANY_LAT,
   COMPANY_LNG,
   DEFAULT_RADIUS_M,
+  isWorkingDay,
   type KioskSettings,
   type Profile,
   type Announcement,
@@ -235,8 +236,13 @@ useEffect(() => {
     const area = areaCodes.find(a => a.code === id);
     if (area) { setCode(""); await openAreaView(area); return; }
 
-    if (kioskDisabled) { toast.error("Kiosk is disabled today (Holiday)."); setCode(""); return; }
-    if (!inside) { toast.error("You are outside company premises."); setCode(""); return; }
+    if (kioskDisabled) { toast.error("Kiosk is disabled today (Holiday)."); setCode(""); setTimeout(() => inputRef.current?.focus(), 100); return; }
+    // Working days check
+    if (!isWorkingDay(new Date(), settings?.working_days)) {
+      toast.error("No operations today. Contact HR if this is incorrect.");
+      setCode(""); setTimeout(() => inputRef.current?.focus(), 100); return;
+    }
+    if (!inside) { toast.error("You are outside company premises."); setCode(""); setTimeout(() => inputRef.current?.focus(), 100); return; }
 
     setBusy(true);
     try {
@@ -246,8 +252,8 @@ useEffect(() => {
         .eq("company_id", id)
         .maybeSingle();
       if (pErr) throw pErr;
-      if (!profile) { toast.error("Company ID not found."); setCode(""); return; }
-      if (!profile.is_approved) { toast.error("Account pending HR approval."); setCode(""); return; }
+      if (!profile) { toast.error("Company ID not found."); setCode(""); setTimeout(() => inputRef.current?.focus(), 100); return; }
+      if (!profile.is_approved) { toast.error("Account pending HR approval."); setCode(""); setTimeout(() => inputRef.current?.focus(), 100); return; }
 
       // Latest-record logic — supports cross-date night shift.
       // If latest record is an open time_in (no time_out after it) → TIME OUT.
@@ -264,6 +270,7 @@ useEffect(() => {
       if (latest && Date.now() - new Date(latest.timestamp).getTime() < 60_000) {
         toast.error("Please wait a moment before logging again.");
         setCode("");
+        setTimeout(() => inputRef.current?.focus(), 100);
         return;
       }
 
@@ -293,6 +300,7 @@ useEffect(() => {
     } catch (err: any) {
       toast.error(err.message ?? "Failed to record attendance");
       setCode("");
+      setTimeout(() => inputRef.current?.focus(), 100);
     } finally {
       setBusy(false);
     }
