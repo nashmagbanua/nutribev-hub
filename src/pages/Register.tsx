@@ -60,6 +60,7 @@ export default function Register() {
         department: form.department,
         dob: form.dob || null,
         password: form.password,
+        avatar_url: "",
         role: ({"hr_admin":"HR","manager":"Manager","supervisor":"Supervisor","nurse":"Nurse","safety_officer":"Safety Officer"} as Record<string,string>)[form.system_role] ?? "Employee", // legacy mirror
         system_role: form.system_role,
         is_approved: false,
