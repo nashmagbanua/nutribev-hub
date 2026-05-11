@@ -383,17 +383,12 @@ export default function EmployeeDashboard() {
         )}
 
         {/* ── PPE ───────────────────────────────────────────────────────────── */}
-        {tab === "ppe" && (
-          <div className="rounded-2xl bg-card border border-border shadow-soft p-8 flex flex-col items-center justify-center gap-4 text-center min-h-[300px]">
-            <ShieldCheck className="h-16 w-16 text-muted-foreground/30" />
-            <div>
-              <h3 className="font-bold text-lg">PPE Request</h3>
-              <p className="text-muted-foreground text-sm mt-1">Personal Protective Equipment requests are coming soon.</p>
-              <p className="text-xs text-muted-foreground mt-2">This feature is under development.</p>
-            </div>
-            <Badge variant="secondary" className="rounded-full px-4">Coming Soon</Badge>
-          </div>
-        )}
+{tab === "ppe" && (
+  <div className="container max-w-2xl px-0"> 
+     {/* Tanggalin ang dating "Coming Soon" card at ipalit ito */}
+     <PPERequest />
+  </div>
+)}
       </main>
 
       {/* ── Bottom nav (mobile) / Side-style tabs (desktop) ───────────────── */}
