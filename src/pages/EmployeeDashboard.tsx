@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   supabase, uploadImage, formatPH, lastNameOf,
-  SYSTEM_ROLES, JOB_POSITIONS,
-  type AttendanceRow, type Announcement, type Profile,
+  SYSTEM_ROLES, JOB_POSITIONS, UNIFORM_FIELDS,
+  type AttendanceRow, type Announcement, type Profile, type UniformSizes,
 } from "@/lib/supabase";
 import { AppHeader } from "@/components/AppHeader";
 import { ChatMessenger } from "@/components/ChatMessenger";
@@ -14,13 +14,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import PPERequestPage from "@/pages/PPERequest";
 import {
   CalendarDays, User, MessageSquare, ShieldCheck, Home,
   Camera, KeyRound, Mail, Eye, EyeOff, ChevronLeft, ChevronRight,
   Clock, LogIn, LogOut, Megaphone, CheckCircle2, AlertCircle,
-  Briefcase, IdCard, Cake, MapPin, Building2, Pencil, ArrowUpRight,
+  Briefcase, IdCard, Cake, MapPin, Building2, Pencil, ArrowUpRight, Shirt,
 } from "lucide-react";
-import PPERequest from "./PPERequest";
 
 // ─── PH date helpers (no date-fns timezone bugs) ──────────────────────────────
 
@@ -75,7 +75,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function EmployeeDashboard() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [tab, setTab]               = useState<Tab>("home");
   const [rows, setRows]             = useState<AttendanceRow[]>([]);
   const [allRows, setAllRows]       = useState<AttendanceRow[]>([]);
@@ -373,7 +373,7 @@ export default function EmployeeDashboard() {
 
         {/* ── PROFILE ───────────────────────────────────────────────────────── */}
         {tab === "profile" && (
-          <ProfileTab profile={profile} onUpdated={loadAll} />
+          <ProfileTab profile={profile} onUpdated={refreshProfile} />
         )}
 
         {/* ── MESSAGES ──────────────────────────────────────────────────────── */}
@@ -384,12 +384,7 @@ export default function EmployeeDashboard() {
         )}
 
         {/* ── PPE ───────────────────────────────────────────────────────────── */}
-{tab === "ppe" && (
-  <div className="container max-w-2xl px-0"> 
-     {/* Tanggalin ang dating "Coming Soon" card at ipalit ito */}
-     <PPERequest />
-  </div>
-)}
+        {tab === "ppe" && <PPERequestPage embedded />}
       </main>
 
       {/* ── Bottom nav (mobile) / Side-style tabs (desktop) ───────────────── */}
@@ -564,6 +559,9 @@ function ProfileTab({ profile, onUpdated }: { profile: Profile; onUpdated: () =>
           valueClass={profile.is_approved ? "text-emerald-600 font-semibold" : "text-warning font-semibold"} />
       </div>
 
+      {/* Uniform Sizes */}
+      <UniformSizesCard profile={profile} onUpdated={onUpdated} />
+
       {/* Actions */}
       <div className="rounded-2xl bg-card border border-border shadow-soft p-5 space-y-3">
         <h3 className="font-bold mb-1 flex items-center gap-2"><Pencil className="h-4 w-4 text-primary" /> Account Settings</h3>
@@ -699,6 +697,117 @@ function UpdateEmailDialog({ companyId, current }: { companyId: string; current:
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+// ─── UniformSizesCard ─────────────────────────────────────────────────────────
+
+function UniformSizesCard({ profile, onUpdated }: { profile: Profile; onUpdated: () => void }) {
+  const [open, setOpen]       = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const sizes = (profile.uniform_sizes ?? null) as UniformSizes | null;
+
+  const blankForm = (): UniformSizes => ({
+    tshirt: null, longsleeve: null, pants: null,
+    safety_boots: null, safety_shoes: null, last_updated: null,
+  });
+
+  const [form, setForm] = useState<UniformSizes>(sizes ?? blankForm());
+
+  const save = async () => {
+    setSaving(true);
+    const payload: UniformSizes = { ...form, last_updated: new Date().toISOString() };
+    const { error } = await supabase
+      .from("profiles")
+      .update({ uniform_sizes: payload })
+      .eq("company_id", profile.company_id);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Uniform sizes saved ✓");
+    setOpen(false);
+    onUpdated();
+  };
+
+  const hasSizes = sizes && UNIFORM_FIELDS.some(f => sizes[f.key]);
+
+  return (
+    <>
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold flex items-center gap-2">
+            <Shirt className="h-4 w-4 text-primary" /> Company Uniform Sizes
+          </h3>
+          <Button
+            size="sm" variant="outline" className="rounded-xl"
+            onClick={() => { setForm(sizes ?? blankForm()); setOpen(true); }}
+          >
+            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+            {hasSizes ? "Edit Sizes" : "Fill In Sizes"}
+          </Button>
+        </div>
+
+        {!hasSizes ? (
+          <div className="rounded-xl bg-muted/40 border border-dashed border-border p-5 text-center space-y-2">
+            <Shirt className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+            <p className="text-sm text-muted-foreground">You haven&apos;t filled in your uniform sizes yet.</p>
+            <p className="text-xs text-muted-foreground">HR uses this for uniform ordering — please fill it in.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {UNIFORM_FIELDS.map(f => (
+                <div key={f.key} className="rounded-xl bg-muted/40 px-3 py-2.5 text-center">
+                  <div className="text-xs text-muted-foreground mb-0.5">{f.label}</div>
+                  <div className="font-bold text-lg">
+                    {sizes?.[f.key] ?? <span className="text-muted-foreground text-sm font-normal">—</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {sizes?.last_updated && (
+              <p className="text-xs text-muted-foreground text-right">
+                Last updated: {formatPH(sizes.last_updated, { dateStyle: "medium", timeStyle: "short" } as any)}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="rounded-2xl max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shirt className="h-5 w-5 text-primary" /> My Uniform Sizes
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-1">
+            HR uses these sizes for uniform ordering. Please keep them updated.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {UNIFORM_FIELDS.map(f => (
+              <div key={f.key} className="space-y-1.5">
+                <Label className="text-xs">{f.label}</Label>
+                <select
+                  value={form[f.key] ?? ""}
+                  onChange={e => setForm({ ...form, [f.key]: e.target.value || null })}
+                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">— Select —</option>
+                  {f.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} className="rounded-xl">Cancel</Button>
+            <Button onClick={save} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground">
+              {saving ? "Saving…" : "Save Sizes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
