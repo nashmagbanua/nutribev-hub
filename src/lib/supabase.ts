@@ -67,21 +67,47 @@ export const DEPARTMENTS: { value: Department; label: string }[] = [
   { value: "safety",     label: "Safety" },
 ];
 
+export type UniformSizes = {
+  tshirt:        string | null;
+  longsleeve:    string | null;
+  pants:         string | null;
+  safety_boots:  string | null;
+  safety_shoes:  string | null;
+  last_updated:  string | null; // ISO timestamp
+};
+
+export const UNIFORM_CLOTHING_SIZES = ["XS","S","M","L","XL","2XL","3XL"];
+export const UNIFORM_PANTS_SIZES    = ["26","27","28","29","30","31","32","33","34","36","38","40"];
+export const UNIFORM_SHOE_SIZES     = ["36","37","38","39","40","41","42","43","44","45","46"];
+
+export const UNIFORM_FIELDS: {
+  key: keyof Omit<UniformSizes, "last_updated">;
+  label: string;
+  sizes: string[];
+}[] = [
+  { key: "tshirt",       label: "T-Shirt",       sizes: UNIFORM_CLOTHING_SIZES },
+  { key: "longsleeve",   label: "Long Sleeve",    sizes: UNIFORM_CLOTHING_SIZES },
+  { key: "pants",        label: "Pants (Waist)",  sizes: UNIFORM_PANTS_SIZES    },
+  { key: "safety_boots", label: "Safety Boots",   sizes: UNIFORM_SHOE_SIZES     },
+  { key: "safety_shoes", label: "Safety Shoes",   sizes: UNIFORM_SHOE_SIZES     },
+];
+
 export type Profile = {
   id: string;
   company_id: string;
   full_name: string;
   dob: string | null;
-  role: string;                     // legacy
-  position?: string | null;         // legacy
-  system_role?: SystemRole | null;  // new
-  job_position?: JobPosition | null;// new
-  department?: Department | null;   // new
+  role: string;                      // legacy
+  position?: string | null;          // legacy
+  system_role?: SystemRole | null;   // new
+  job_position?: JobPosition | null; // new
+  department?: Department | null;    // new
   email?: string | null;
   avatar_url: string | null;
   password?: string;
   is_approved: boolean;
   area_code?: string | null;
+  uniform_sizes?: UniformSizes | null; // company uniform measurements
 };
 
 /** Effective role for permissions — prefers new system_role, falls back to legacy role. */
