@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   supabase, formatPH, uploadImage, lastNameOf,
-  DEFAULT_AREA_CODES, SYSTEM_ROLES, JOB_POSITIONS, isWorkingDay,
+  DEFAULT_AREA_CODES, SYSTEM_ROLES, JOB_POSITIONS, isWorkingDay, UNIFORM_FIELDS,
   type SystemRole, type JobPosition,
   type Profile, type AttendanceRow, type Announcement,
-  type KioskSettings, type AreaCode, type Message,
+  type KioskSettings, type AreaCode, type Message, type UniformSizes,
 } from "@/lib/supabase";
 import { AppHeader } from "@/components/AppHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,7 +23,7 @@ import {
   Search, UserPlus, Users, CalendarCheck, Megaphone, Trash2, Plus,
   Settings as SettingsIcon, Coffee, Stethoscope, Pencil, MapPin,
   Inbox as InboxIcon, Send, CheckCircle2, ImageIcon, TrendingUp,
-  Download, Clock, AlertTriangle, LogIn, LogOut,
+  Download, Clock, AlertTriangle, LogIn, LogOut, Shirt,
 } from "lucide-react";
 import { subDays, startOfDay } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -74,7 +74,7 @@ export default function HRDashboard() {
     const [p, a, ann, s, v, c, h, ac, m] = await Promise.all([
       supabase
         .from("profiles")
-        .select("id, company_id, full_name, dob, role, system_role, avatar_url, is_approved, email, position, job_position, department, area_code")
+        .select("id, company_id, full_name, dob, role, system_role, avatar_url, is_approved, email, position, job_position, department, area_code, uniform_sizes")
         .order("created_at", { ascending: false }),
       supabase.from("attendance").select("*").order("timestamp", { ascending: false }).limit(2000),
       supabase.from("announcements").select("*").order("created_at", { ascending: false }),
@@ -280,6 +280,34 @@ export default function HRDashboard() {
                 />
               </div>
               <AddEmployeeDialog areaCodes={areaCodes} onAdded={loadAll} />
+              <Button
+                variant="outline" className="rounded-xl flex items-center gap-2"
+                onClick={() => {
+                  const headers = ["Company ID","Full Name","Position","Area","T-Shirt","Long Sleeve","Pants (Waist)","Safety Boots","Safety Shoes","Last Updated"];
+                  const rows = profiles.map(p => {
+                    const u = p.uniform_sizes as any;
+                    return [
+                      p.company_id,
+                      p.full_name,
+                      JOB_POSITIONS.find(r => r.value === (p.job_position ?? p.position))?.label ?? p.position ?? "—",
+                      areaMap[p.area_code ?? ""] ?? "—",
+                      u?.tshirt       ?? "",
+                      u?.longsleeve   ?? "",
+                      u?.pants        ?? "",
+                      u?.safety_boots ?? "",
+                      u?.safety_shoes ?? "",
+                      u?.last_updated ? formatPH(u.last_updated, { dateStyle: "short" } as any) : "Not filled",
+                    ];
+                  });
+                  const csv = [headers, ...rows].map(r => r.map((v: any) => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+                  a.download = `uniform-sizes-${new Date().toISOString().slice(0,10)}.csv`;
+                  a.click();
+                }}
+              >
+                <Shirt className="h-4 w-4" /> Export Uniform Sizes
+              </Button>
             </div>
 
             {pendingCount > 0 && (
@@ -628,12 +656,13 @@ function AddEmployeeDialog({ onAdded, areaCodes }: { onAdded: () => void; areaCo
 function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profile; areaCodes: AreaCode[]; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
-    full_name:    employee.full_name,
-    system_role:  (employee.system_role ?? "employee") as SystemRole,
-    job_position: (employee.job_position ?? employee.position ?? "") as JobPosition | "",
-    area_code:    employee.area_code ?? "",
-    dob:          employee.dob ?? "",
-    email:        employee.email ?? "",
+    full_name:     employee.full_name,
+    system_role:   (employee.system_role ?? "employee") as SystemRole,
+    job_position:  (employee.job_position ?? employee.position ?? "") as JobPosition | "",
+    area_code:     employee.area_code ?? "",
+    dob:           employee.dob ?? "",
+    email:         employee.email ?? "",
+    uniform_sizes: (employee.uniform_sizes ?? null) as UniformSizes | null,
   });
   const [saving, setSaving] = useState(false);
 
@@ -641,15 +670,19 @@ function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profil
     if (!form.full_name.trim()) { toast.error("Full name is required"); return; }
     setSaving(true);
     const legacyRole = ({"hr_admin":"HR","manager":"Manager","supervisor":"Supervisor","nurse":"Nurse","safety_officer":"Safety Officer"} as Record<string,string>)[form.system_role] ?? "Employee";
+    const uniformPayload = form.uniform_sizes
+      ? { ...form.uniform_sizes, last_updated: new Date().toISOString() }
+      : null;
     const { error } = await supabase.from("profiles").update({
-      full_name:    form.full_name.trim(),
-      role:         legacyRole,
-      system_role:  form.system_role,
-      position:     form.job_position || null,
-      job_position: form.job_position || null,
-      area_code:    form.area_code || null,
-      dob:          form.dob || null,
-      email:        form.email.trim() || null,
+      full_name:     form.full_name.trim(),
+      role:          legacyRole,
+      system_role:   form.system_role,
+      position:      form.job_position || null,
+      job_position:  form.job_position || null,
+      area_code:     form.area_code || null,
+      dob:           form.dob || null,
+      email:         form.email.trim() || null,
+      uniform_sizes: uniformPayload,
     }).eq("id", employee.id);
     setSaving(false);
     if (error) return toast.error(error.message);
@@ -691,6 +724,36 @@ function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profil
                 </SelectContent>
               </Select>
             </Field>
+          </div>
+
+          {/* Uniform Sizes */}
+          <div className="sm:col-span-2">
+            <div className="rounded-xl bg-muted/40 border border-border p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Shirt className="h-4 w-4 text-primary" /> Uniform Sizes
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {UNIFORM_FIELDS.map(f => (
+                  <div key={f.key} className="space-y-1">
+                    <Label className="text-xs">{f.label}</Label>
+                    <select
+                      value={(form.uniform_sizes as any)?.[f.key] ?? ""}
+                      onChange={e => setForm({
+                        ...form,
+                        uniform_sizes: {
+                          ...(form.uniform_sizes as any ?? {}),
+                          [f.key]: e.target.value || null,
+                        } as any,
+                      })}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">— None —</option>
+                      {f.sizes.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
         <DialogFooter className="mt-2">
