@@ -132,12 +132,25 @@ export type AttendanceRow = {
   source?: "kiosk" | "mobile_fallback" | null;
 };
 
+export type AnnouncementCategory = "general" | "safety" | "hr" | "holiday" | "operations";
+
+export const ANNOUNCEMENT_CATEGORIES: { value: AnnouncementCategory; label: string; color: string }[] = [
+  { value: "general",    label: "General",    color: "bg-muted text-muted-foreground" },
+  { value: "safety",     label: "Safety",     color: "bg-destructive/15 text-destructive" },
+  { value: "hr",         label: "HR",         color: "bg-primary/15 text-primary" },
+  { value: "holiday",    label: "Holiday",    color: "bg-warning/20 text-foreground" },
+  { value: "operations", label: "Operations", color: "bg-sky-500/15 text-sky-600" },
+];
+
 export type Announcement = {
   id: string;
   title: string;
   body: string | null;
   image_url: string | null;
   active: boolean;
+  pinned: boolean | null;       // pinned announcements show first
+  category: AnnouncementCategory | null;
+  expires_at: string | null;    // auto-hide after this date
   created_at: string;
 };
 
@@ -157,6 +170,7 @@ export type KioskSettings = {
   geofence_lng: number;
   holiday_mode: "allow" | "disable";
   working_days: string | null;   // "1111110" Sun–Sat bitmask, null = Mon–Sat default
+  kiosk_theme: "default" | "dark" | "high_contrast" | null;
   updated_at: string;
 };
 
