@@ -146,6 +146,10 @@ useEffect(() => {
   }, []);
 
   const radius = settings?.geofence_radius_m ?? DEFAULT_RADIUS_M;
+  const kioskThemeClass = {
+    "dark":          "kiosk-theme-dark",
+    "high_contrast": "kiosk-theme-high-contrast",
+  }[(settings?.kiosk_theme ?? "default")] ?? "kiosk-theme-default";
   const centerLat = settings?.geofence_lat ?? COMPANY_LAT;
   const centerLng = settings?.geofence_lng ?? COMPANY_LNG;
   const distance = coords ? Math.round(haversineMeters(coords.lat, coords.lng, centerLat, centerLng)) : null;
@@ -339,12 +343,20 @@ useEffect(() => {
   const dateStr = formatPH(now, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const timeStr = formatPH(now, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
 
+  // Map theme to overlay gradient
+  const themeOverlay =
+    settings?.kiosk_theme === "dark"
+      ? "bg-gradient-to-br from-slate-900/90 via-slate-800/85 to-slate-900/90"
+      : settings?.kiosk_theme === "high_contrast"
+      ? "bg-gradient-to-br from-black/92 via-zinc-900/90 to-black/92"
+      : holidayName
+      ? "bg-gradient-to-br from-accent/80 via-primary/70 to-warning/60"
+      : "bg-gradient-to-br from-primary/85 via-primary/70 to-accent/60";
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className={`min-h-screen relative overflow-hidden ${kioskThemeClass}`}>
       <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${factoryBg})` }} aria-hidden />
-      <div className={`absolute inset-0 backdrop-blur-[2px] ${
-        holidayName ? "bg-gradient-to-br from-accent/80 via-primary/70 to-warning/60" : "bg-gradient-to-br from-primary/85 via-primary/70 to-accent/60"
-      }`} aria-hidden />
+      <div className={`absolute inset-0 backdrop-blur-[2px] ${themeOverlay}`} aria-hidden />
 
       <header className="relative z-10 container flex items-center justify-between py-4">
         <div className="flex items-center gap-3 text-primary-foreground">
