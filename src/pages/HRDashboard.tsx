@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   supabase, formatPH, uploadImage, lastNameOf,
-  DEFAULT_AREA_CODES, SYSTEM_ROLES, JOB_POSITIONS, isWorkingDay, UNIFORM_FIELDS,
+  DEFAULT_AREA_CODES, SYSTEM_ROLES, JOB_POSITIONS, isWorkingDay, ANNOUNCEMENT_CATEGORIES, type AnnouncementCategory, UNIFORM_FIELDS,
   type SystemRole, type JobPosition,
   type Profile, type AttendanceRow, type Announcement,
   type KioskSettings, type AreaCode, type Message, type UniformSizes,
@@ -480,24 +480,33 @@ export default function HRDashboard() {
             <AnnouncementForm onAdded={loadAll} />
             <div className="grid md:grid-cols-2 gap-4">
               {announcements.map(a => (
-                <div key={a.id} className="rounded-2xl bg-card border border-border shadow-soft p-5">
+                <div key={a.id} className={`rounded-2xl bg-card border shadow-soft p-5 ${a.pinned ? "border-primary/40 bg-primary/5" : "border-border"}`}>
                   <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2">
-                      <Megaphone className="h-4 w-4 text-primary" />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Megaphone className="h-4 w-4 text-primary shrink-0" />
                       <h4 className="font-bold">{a.title}</h4>
+                      {a.pinned && <Badge className="rounded-full text-[10px] px-2 bg-primary/15 text-primary border border-primary/30">📌 Pinned</Badge>}
+                      {a.category && (() => {
+                        const cfg = ANNOUNCEMENT_CATEGORIES.find(c => c.value === a.category);
+                        return cfg ? <Badge className={`rounded-full text-[10px] px-2 ${cfg.color} border border-current/20`}>{cfg.label}</Badge> : null;
+                      })()}
+                      {a.expires_at && new Date(a.expires_at) < new Date() && (
+                        <Badge className="rounded-full text-[10px] px-2 bg-muted text-muted-foreground">Expired</Badge>
+                      )}
                     </div>
                     <Button size="icon" variant="ghost" onClick={async () => {
                       await supabase.from("announcements").delete().eq("id", a.id);
                       toast.success("Deleted"); loadAll();
                     }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>
-                  {a.image_url && <img src={a.image_url} alt={a.title} className="rounded-xl mb-3 max-h-40 w-full object-cover" />}
+                  {a.image_url && <img src={a.image_url} alt={a.title} className="rounded-xl mb-3 max-h-40 w-full object-cover cursor-pointer" onClick={() => window.open(a.image_url!, "_blank")} />}
                   {a.body && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{a.body}</p>}
-                  <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground flex-wrap">
                     <Switch checked={a.active} onCheckedChange={async v => {
                       await supabase.from("announcements").update({ active: v }).eq("id", a.id); loadAll();
                     }} />
                     <span>{a.active ? "Active" : "Hidden"}</span>
+                    {a.expires_at && <span>· Expires {formatPH(a.expires_at, { dateStyle: "medium" } as any)}</span>}
                     <span className="ml-auto">{formatPH(a.created_at, { dateStyle: "medium" } as any)}</span>
                   </div>
                 </div>
@@ -770,9 +779,21 @@ function EditEmployeeDialog({ employee, areaCodes, onSaved }: { employee: Profil
 // ─── AnnouncementForm ─────────────────────────────────────────────────────────
 
 function AnnouncementForm({ onAdded }: { onAdded: () => void }) {
-  const [form, setForm]     = useState({ title: "", body: "" });
+  const [form, setForm] = useState({
+    title: "", body: "",
+    category: "general" as AnnouncementCategory,
+    pinned: false,
+    expires_at: "",
+  });
   const [file, setFile]     = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  const onFileChange = (f: File | null) => {
+    setFile(f);
+    if (f) setPreview(URL.createObjectURL(f));
+    else setPreview(null);
+  };
 
   const submit = async () => {
     if (!form.title.trim()) { toast.error("Title is required"); return; }
@@ -783,24 +804,78 @@ function AnnouncementForm({ onAdded }: { onAdded: () => void }) {
         if (file.size > 2 * 1024 * 1024) toast.info("Large file — compressing…");
         image_url = await uploadImage("uploads", `announcements/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`, file);
       }
-      const { error } = await supabase.from("announcements").insert({ ...form, image_url, active: true });
+      const { error } = await supabase.from("announcements").insert({
+        title:      form.title.trim(),
+        body:       form.body.trim() || null,
+        image_url,
+        active:     true,
+        pinned:     form.pinned,
+        category:   form.category,
+        expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+      });
       if (error) throw error;
       toast.success("Announcement published ✓");
-      setForm({ title: "", body: "" }); setFile(null); onAdded();
+      setForm({ title: "", body: "", category: "general", pinned: false, expires_at: "" });
+      setFile(null); setPreview(null); onAdded();
     } catch (e: any) {
       toast.error(e.message ?? "Failed to publish");
     } finally { setSaving(false); }
   };
 
+  const catCfg = ANNOUNCEMENT_CATEGORIES.find(c => c.value === form.category)!;
+
   return (
-    <div className="rounded-2xl bg-card border border-border shadow-soft p-5 space-y-3">
+    <div className="rounded-2xl bg-card border border-border shadow-soft p-5 space-y-4">
       <h3 className="font-bold flex items-center gap-2"><Megaphone className="h-4 w-4 text-primary" /> New Announcement</h3>
+
+      {/* Row 1: title + category */}
       <div className="grid md:grid-cols-2 gap-3">
         <Input placeholder="Title *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="rounded-xl" />
-        <Input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => setFile(e.target.files?.[0] ?? null)} className="rounded-xl" />
+        <div className="flex gap-2 flex-wrap">
+          {ANNOUNCEMENT_CATEGORIES.map(c => (
+            <button key={c.value} type="button"
+              onClick={() => setForm({ ...form, category: c.value })}
+              className={`rounded-full px-3 py-1 text-xs font-semibold border transition-colors ${
+                form.category === c.value ? c.color + " border-current" : "border-border text-muted-foreground hover:border-primary"
+              }`}
+            >{c.label}</button>
+          ))}
+        </div>
       </div>
+
+      {/* Body */}
       <Textarea placeholder="Body (optional)" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} className="rounded-xl" rows={3} />
-      {file && <p className="text-xs text-muted-foreground flex items-center gap-2"><ImageIcon className="h-3 w-3" />{file.name} — will be auto-compressed.</p>}
+
+      {/* Row 2: image + expires + pin */}
+      <div className="grid md:grid-cols-3 gap-3 items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Image (optional)</Label>
+          <Input type="file" accept="image/jpeg,image/png,image/webp"
+            onChange={e => onFileChange(e.target.files?.[0] ?? null)} className="rounded-xl" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Expires At (auto-hide)</Label>
+          <Input type="date" value={form.expires_at}
+            onChange={e => setForm({ ...form, expires_at: e.target.value })} className="rounded-xl" />
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer rounded-xl border border-border px-4 py-2.5 hover:bg-muted/40 transition-colors">
+          <input type="checkbox" checked={form.pinned} onChange={e => setForm({ ...form, pinned: e.target.checked })}
+            className="h-4 w-4 rounded accent-primary" />
+          <span className="text-sm font-medium">📌 Pin to top</span>
+        </label>
+      </div>
+
+      {/* Image preview */}
+      {preview && (
+        <div className="relative w-full max-h-40 overflow-hidden rounded-xl">
+          <img src={preview} alt="Preview" className="w-full object-cover max-h-40 rounded-xl" />
+          <button onClick={() => onFileChange(null)}
+            className="absolute top-2 right-2 rounded-full bg-black/60 text-white p-1 hover:bg-black/80">
+            <span className="text-xs px-1">✕</span>
+          </button>
+        </div>
+      )}
+
       <Button onClick={submit} disabled={saving} className="rounded-xl gradient-primary text-primary-foreground">
         <Plus className="h-4 w-4 mr-2" />{saving ? "Publishing…" : "Publish"}
       </Button>
@@ -1302,6 +1377,7 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
     geofence_lng:         settings?.geofence_lng         ?? 121.11928280273479,
     holiday_mode:         settings?.holiday_mode         ?? "allow",
     working_days:         settings?.working_days          ?? "1111110",
+    kiosk_theme:          settings?.kiosk_theme             ?? "default",
   });
   const [saving, setSaving] = useState(false);
 
@@ -1317,6 +1393,7 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
       geofence_lng:         settings.geofence_lng,
       holiday_mode:         settings.holiday_mode ?? "allow",
       working_days:         settings.working_days  ?? "1111110",
+      kiosk_theme:          settings.kiosk_theme   ?? "default",
     });
   }, [settings]);
 
@@ -1384,6 +1461,35 @@ function SettingsPanel({ settings, onSaved }: { settings: KioskSettings | null; 
         </div>
       </div>
 
+
+
+      <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
+        <h3 className="font-bold">Kiosk Theme</h3>
+        <p className="text-xs text-muted-foreground">Changes the look of the time in/out kiosk screen.</p>
+        <div className="grid grid-cols-3 gap-3">
+          {([
+            { value: "default",       label: "Default",       desc: "Green brand",       preview: "bg-gradient-to-br from-green-700 to-green-500" },
+            { value: "dark",          label: "Dark Industrial",desc: "Deep slate",        preview: "bg-gradient-to-br from-slate-900 to-slate-700" },
+            { value: "high_contrast", label: "High Contrast",  desc: "Black & yellow",   preview: "bg-gradient-to-br from-black to-zinc-800 border-2 border-yellow-400" },
+          ] as const).map(t => (
+            <button key={t.value} type="button"
+              onClick={() => setForm({ ...form, kiosk_theme: t.value as any })}
+              className={`rounded-xl border-2 p-3 flex flex-col items-center gap-2 transition-all ${
+                form.kiosk_theme === t.value ? "border-primary shadow-soft" : "border-border hover:border-primary/40"
+              }`}
+            >
+              <div className={`h-10 w-full rounded-lg ${t.preview}`} />
+              <div className="text-center">
+                <div className="text-xs font-bold">{t.label}</div>
+                <div className="text-[10px] text-muted-foreground">{t.desc}</div>
+              </div>
+              {form.kiosk_theme === t.value && (
+                <div className="h-2 w-2 rounded-full bg-primary" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="rounded-2xl bg-card border border-border shadow-soft p-6 space-y-4">
         <h3 className="font-bold">Working Days</h3>
