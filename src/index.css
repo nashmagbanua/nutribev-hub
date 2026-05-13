@@ -131,3 +131,47 @@
   .shadow-glow { box-shadow: var(--shadow-glow); }
   .transition-smooth { transition: var(--transition-smooth); }
 }
+
+/* ─── Kiosk Theme Presets ─────────────────────────────────────────────────────
+   Applied as a class on the kiosk root div: kiosk-theme-default / dark-industrial / high-contrast
+   These override the CSS variables only within the kiosk page.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Theme 1: Default — uses existing :root green brand (no overrides needed) */
+.kiosk-theme-default {
+  --kiosk-bg-from:    hsl(152 60% 20%);
+  --kiosk-bg-to:      hsl(145 65% 35%);
+  --kiosk-text:       hsl(0 0% 100%);
+  --kiosk-card-bg:    hsl(0 0% 100% / 0.95);
+  --kiosk-accent:     hsl(88 55% 55%);
+  --kiosk-overlay:    hsl(152 60% 10% / 0.55);
+}
+
+/* Theme 2: Dark Industrial — deep slate, factory-floor serious */
+.kiosk-theme-dark {
+  --kiosk-bg-from:    hsl(220 25% 10%);
+  --kiosk-bg-to:      hsl(220 20% 18%);
+  --kiosk-text:       hsl(210 20% 92%);
+  --kiosk-card-bg:    hsl(220 22% 16% / 0.98);
+  --kiosk-accent:     hsl(210 80% 55%);
+  --kiosk-overlay:    hsl(220 30% 5% / 0.65);
+}
+
+/* Theme 3: High Contrast — black/white/yellow, bright factory floor */
+.kiosk-theme-high-contrast {
+  --kiosk-bg-from:    hsl(0 0% 4%);
+  --kiosk-bg-to:      hsl(0 0% 10%);
+  --kiosk-text:       hsl(0 0% 100%);
+  --kiosk-card-bg:    hsl(0 0% 100% / 1.0);
+  --kiosk-accent:     hsl(50 100% 50%);
+  --kiosk-overlay:    hsl(0 0% 0% / 0.7);
+}
+
+/* Utility classes that consume the kiosk CSS vars */
+.kiosk-bg {
+  background: linear-gradient(135deg, var(--kiosk-bg-from), var(--kiosk-bg-to));
+}
+.kiosk-text       { color: var(--kiosk-text); }
+.kiosk-card       { background: var(--kiosk-card-bg); }
+.kiosk-accent     { color: var(--kiosk-accent); }
+.kiosk-overlay    { background: var(--kiosk-overlay); }
