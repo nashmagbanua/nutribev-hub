@@ -15,6 +15,7 @@ import Clinic from "./pages/Clinic";
 import MobilePunch from "./pages/MobilePunch";
 import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound.tsx";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +26,7 @@ const App = () => (
         <TooltipProvider>
           <Sonner />
           <BrowserRouter>
+           <InstallPrompt />
             <Routes>
               <Route path="/" element={<Kiosk />} />
               <Route path="/welcome" element={<Landing />} />
