@@ -1,11 +1,3 @@
-/**
- * VisitorCheckDialog.tsx
- * ──────────────────────
- * Triggered by kiosk code "1111".
- * Guard types a visitor's pass code to look up their record,
- * confirm their identity, and optionally record time-out.
- */
-
 import { useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
