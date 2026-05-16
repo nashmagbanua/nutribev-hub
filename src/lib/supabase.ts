@@ -188,7 +188,17 @@ export type Visitor = {
   purpose: string | null;
   person_to_visit: string | null;
   time_in: string;
+  time_out: string | null;
+  visitor_type: "solo" | "group";
+  group_count: number | null;   // total people in group including rep
+  pass_code: string;            // e.g. "V-2847" — shown on kiosk + HR dashboard
 };
+
+/** Generate a random visitor pass code: V-XXXX (4 random digits) */
+export function generatePassCode(): string {
+  const num = Math.floor(1000 + Math.random() * 9000); // 1000–9999
+  return `V-${num}`;
+}
 
 export type ClinicRequest = {
   id: string;
@@ -243,6 +253,7 @@ export const COMPANY_LNG = 121.11928280273479;
 export const DEFAULT_RADIUS_M = 100;
 export const ADMIN_SHORTCUT_CODE = "0000";
 export const VISITOR_CODE = "12345";
+export const VISITOR_CHECK_CODE = "1111";   // guard types this to check a visitor pass
 
 /** Default area codes seeded by HR. */
 export const DEFAULT_AREA_CODES: { code: string; name: string }[] = [
