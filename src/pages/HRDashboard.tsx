@@ -1175,22 +1175,27 @@ function VisitorsTable({ rows, onChanged }: { rows: any[]; onChanged: () => void
   }, [rows, search, dateFilter, typeFilter]);
 
   const exportCSV = () => {
-    const headers = ["Pass Code","Type","Name","Company","Purpose","Person to Visit","Group Size","Time In","Time Out"];
-    const data = filtered.map(v => [
-      v.pass_code ?? "—",
-      v.visitor_type ?? "solo",
-      v.full_name,
-      v.company ?? "—",
-      v.purpose ?? "—",
-      v.person_to_visit ?? "—",
-      v.visitor_type === "group" ? v.group_count ?? 1 : 1,
-      formatPH(v.time_in, { dateStyle: "short", timeStyle: "short" } as any),
-      v.time_out ? formatPH(v.time_out, { dateStyle: "short", timeStyle: "short" } as any) : "—",
-    ]);
-    const csv = [headers, ...data].map(r => r.map(c => `"${String(c).replace(/"/g,''""'')}"`).join(",")).join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-    a.download = `visitors-${dateFilter||"all"}.csv`; a.click();
-  };
+  const headers = ["Pass Code","Type","Name","Company","Purpose","Person to Visit","Group Size","Time In","Time Out"];
+  const data = filtered.map(v => [
+    v.pass_code ?? "—",
+    v.visitor_type ?? "solo",
+    v.full_name,
+    v.company ?? "—",
+    v.purpose ?? "—",
+    v.person_to_visit ?? "—",
+    v.visitor_type === "group" ? v.group_count ?? 1 : 1,
+    formatPH(v.time_in, { dateStyle: "short", timeStyle: "short" } as any),
+    v.time_out ? formatPH(v.time_out, { dateStyle: "short", timeStyle: "short" } as any) : "—",
+  ]);
+  const escape = (val: string) => val.replace(/"/g, '""');
+  const csv = [headers, ...data]
+    .map(r => r.map(c => `"${escape(String(c))}"`).join(","))
+    .join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = `visitors-${dateFilter || "all"}.csv`;
+  a.click();
+};
 
   // Summary stats
   const totalPeople = rows.reduce((sum, v) => sum + (v.visitor_type === "group" ? (v.group_count ?? 1) : 1), 0);
