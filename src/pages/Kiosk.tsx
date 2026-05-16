@@ -11,6 +11,7 @@ import {
   isMobileDevice,
   ADMIN_SHORTCUT_CODE,
   VISITOR_CODE,
+  VISITOR_CHECK_CODE,
   COMPANY_LAT,
   COMPANY_LNG,
   DEFAULT_RADIUS_M,
@@ -30,6 +31,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IdleAds } from "@/components/IdleAds";
 import { VisitorDialog } from "@/components/VisitorDialog";
+import { VisitorCheckDialog } from "@/components/VisitorCheckDialog";
 import { toast } from "sonner";
 import { Clock, Loader2, ShieldCheck, UserPlus, LogIn as LogInIcon, PartyPopper, Sparkles, Users } from "lucide-react";
 import factoryBg from "@/assets/factory-bg.webp";
@@ -234,7 +236,8 @@ useEffect(() => {
     if (!id) return;
     if (id === ADMIN_SHORTCUT_CODE) { setCode(""); navigate("/attendance-list"); return; }
     if (id === EMERGENCY_CODE) { setCode(""); setShowEmergency(true); return; }
-    if (id === VISITOR_CODE) { setCode(""); setShowVisitor(true); return; }
+    if (id === VISITOR_CODE)       { setCode(""); setShowVisitor(true);      return; }
+    if (id === VISITOR_CHECK_CODE) { setCode(""); setShowVisitorCheck(true); return; }
 
     // Area code lookup (supervisor)
     const area = areaCodes.find(a => a.code === id);
@@ -324,7 +327,7 @@ useEffect(() => {
 
     if (/^\d{4}$/.test(cleaned)) {
       // Only auto-fire for codes we know are exactly 4 digits.
-      const knownSpecial = cleaned === EMERGENCY_CODE;
+      const knownSpecial = cleaned === EMERGENCY_CODE || cleaned === VISITOR_CHECK_CODE;
       const isAreaCode = areaCodes.some(a => a.code === cleaned);
       if (knownSpecial || isAreaCode) processCode(cleaned);
       // Otherwise user may be typing a longer ID — do nothing yet.
@@ -477,6 +480,8 @@ useEffect(() => {
 
       <VisitorDialog open={showVisitor} onOpenChange={(v) => { setShowVisitor(v); if (!v) setTimeout(() => inputRef.current?.focus(), 100); }} />
 
+      <VisitorCheckDialog open={showVisitorCheck} onOpenChange={(v) => { setShowVisitorCheck(v); if (!v) setTimeout(() => inputRef.current?.focus(), 100); }} />
+
       {/* Emergency Evacuation Dashboard */}
       <EmergencyDashboard
         open={showEmergency}
@@ -527,7 +532,7 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
 
-      {idle && !confirm && !showVisitor && !areaView && !showEmergency && (
+      {idle && !confirm && !showVisitor && !showVisitorCheck && !areaView && !showEmergency && (
         <IdleAds birthdayPeople={birthdayPeople} announcements={announcements} onExit={() => { setIdle(false); inputRef.current?.focus(); }} />
       )}
     </div>
