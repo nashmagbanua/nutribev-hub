@@ -527,7 +527,7 @@ export default function HRDashboard() {
 
           {/* ── VISITORS ───────────────────────────────────────────────────── */}
           <TabsContent value="visitors">
-            <VisitorsTable rows={visitors} />
+            <VisitorsTable rows={visitors} onChanged={loadAll} />
           </TabsContent>
 
           {/* ── CLINIC ─────────────────────────────────────────────────────── */}
@@ -1150,32 +1150,150 @@ function InboxPanel({ currentId, messages, profiles, onChanged }: {
 
 // ─── VisitorsTable ────────────────────────────────────────────────────────────
 
-function VisitorsTable({ rows }: { rows: any[] }) {
+function VisitorsTable({ rows, onChanged }: { rows: any[]; onChanged: () => void }) {
+  const [search, setSearch]   = useState("");
+  const [dateFilter, setDate] = useState("");
+  const [typeFilter, setType] = useState<"all"|"solo"|"group">("all");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter(v => {
+      if (typeFilter !== "all" && v.visitor_type !== typeFilter) return false;
+      if (dateFilter) {
+        const vDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(v.time_in));
+        if (vDate !== dateFilter) return false;
+      }
+      if (!q) return true;
+      return (
+        (v.full_name ?? "").toLowerCase().includes(q) ||
+        (v.company ?? "").toLowerCase().includes(q) ||
+        (v.pass_code ?? "").toLowerCase().includes(q) ||
+        (v.purpose ?? "").toLowerCase().includes(q) ||
+        (v.person_to_visit ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [rows, search, dateFilter, typeFilter]);
+
+  const exportCSV = () => {
+    const headers = ["Pass Code","Type","Name","Company","Purpose","Person to Visit","Group Size","Time In","Time Out"];
+    const data = filtered.map(v => [
+      v.pass_code ?? "—",
+      v.visitor_type ?? "solo",
+      v.full_name,
+      v.company ?? "—",
+      v.purpose ?? "—",
+      v.person_to_visit ?? "—",
+      v.visitor_type === "group" ? v.group_count ?? 1 : 1,
+      formatPH(v.time_in, { dateStyle: "short", timeStyle: "short" } as any),
+      v.time_out ? formatPH(v.time_out, { dateStyle: "short", timeStyle: "short" } as any) : "—",
+    ]);
+    const csv = [headers, ...data].map(r => r.map(c => `"${String(c).replace(/"/g,''""'')}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    a.download = `visitors-${dateFilter||"all"}.csv`; a.click();
+  };
+
+  // Summary stats
+  const totalPeople = rows.reduce((sum, v) => sum + (v.visitor_type === "group" ? (v.group_count ?? 1) : 1), 0);
+  const stillInside = rows.filter(v => !v.time_out).length;
+
   return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
-      <table className="w-full text-sm min-w-[700px]">
-        <thead className="bg-muted/50 text-left">
-          <tr>
-            <th className="p-4">Time In</th>
-            <th className="p-4">Name</th>
-            <th className="p-4">Company</th>
-            <th className="p-4">Purpose</th>
-            <th className="p-4">Person to Visit</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No visitors logged.</td></tr>}
-          {rows.map(v => (
-            <tr key={v.id} className="border-t border-border hover:bg-muted/30">
-              <td className="p-4 font-mono text-xs">{formatPH(v.time_in, { dateStyle: "short", timeStyle: "short" } as any)}</td>
-              <td className="p-4 font-medium">{v.full_name}</td>
-              <td className="p-4 text-muted-foreground">{v.company ?? "—"}</td>
-              <td className="p-4 text-muted-foreground">{v.purpose ?? "—"}</td>
-              <td className="p-4 text-muted-foreground">{v.person_to_visit ?? "—"}</td>
-            </tr>
+    <div className="space-y-4">
+      {/* Stats */}
+      {rows.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-2xl bg-card border border-border shadow-soft p-4 text-center">
+            <div className="text-2xl font-extrabold">{rows.length}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Entries Today</div>
+          </div>
+          <div className="rounded-2xl bg-card border border-border shadow-soft p-4 text-center">
+            <div className="text-2xl font-extrabold">{totalPeople}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Total People</div>
+          </div>
+          <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/25 shadow-soft p-4 text-center">
+            <div className="text-2xl font-extrabold text-emerald-600">{stillInside}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Still Inside</div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search name, pass code, company…" className="pl-10 rounded-xl" />
+        </div>
+        <Input type="date" value={dateFilter} onChange={e => setDate(e.target.value)} className="rounded-xl max-w-[160px]" />
+        <div className="flex gap-1">
+          {(["all","solo","group"] as const).map(t => (
+            <button key={t} onClick={() => setType(t)}
+              className={`rounded-xl px-3 py-2 text-xs font-semibold border transition-colors capitalize ${
+                typeFilter === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/40"
+              }`}
+            >{t === "all" ? "All Types" : t === "solo" ? "👤 Solo" : "👥 Group"}</button>
           ))}
-        </tbody>
-      </table>
+        </div>
+        <Button variant="outline" className="rounded-xl flex items-center gap-2 ml-auto"
+          disabled={filtered.length === 0} onClick={exportCSV}>
+          <Download className="h-4 w-4" /> Export CSV
+        </Button>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft overflow-x-auto">
+        <table className="w-full text-sm min-w-[860px]">
+          <thead className="bg-muted/50 text-left">
+            <tr>
+              <th className="p-4">Pass Code</th>
+              <th className="p-4">Type</th>
+              <th className="p-4">Name</th>
+              <th className="p-4">Company</th>
+              <th className="p-4">Purpose</th>
+              <th className="p-4">Person to Visit</th>
+              <th className="p-4">Time In</th>
+              <th className="p-4">Time Out</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">
+                {search || dateFilter || typeFilter !== "all" ? "No visitors match your filters." : "No visitors logged yet."}
+              </td></tr>
+            )}
+            {filtered.map(v => (
+              <tr key={v.id} className="border-t border-border hover:bg-muted/30">
+                <td className="p-4">
+                  <span className="font-mono font-bold text-primary tracking-widest text-sm">{v.pass_code ?? "—"}</span>
+                </td>
+                <td className="p-4">
+                  {v.visitor_type === "group"
+                    ? <Badge className="rounded-lg bg-violet-500/15 text-violet-600 border border-violet-500/30 text-xs">
+                        👥 Group · {v.group_count ?? "?"}
+                      </Badge>
+                    : <Badge className="rounded-lg bg-sky-500/15 text-sky-600 border border-sky-500/30 text-xs">
+                        👤 Solo
+                      </Badge>}
+                </td>
+                <td className="p-4 font-medium">{v.full_name}</td>
+                <td className="p-4 text-muted-foreground text-xs">{v.company ?? "—"}</td>
+                <td className="p-4 text-muted-foreground text-xs">{v.purpose ?? "—"}</td>
+                <td className="p-4 text-muted-foreground text-xs">{v.person_to_visit ?? "—"}</td>
+                <td className="p-4 font-mono text-xs text-emerald-600">{formatPH(v.time_in, { dateStyle: "short", timeStyle: "short" } as any)}</td>
+                <td className="p-4 font-mono text-xs">
+                  {v.time_out
+                    ? <span className="text-muted-foreground">{formatPH(v.time_out, { dateStyle: "short", timeStyle: "short" } as any)}</span>
+                    : <Badge className="rounded-lg bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-xs">Inside</Badge>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length > 0 && (
+          <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
+            Showing {filtered.length} of {rows.length} visitor entr{rows.length !== 1 ? "ies" : "y"}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
