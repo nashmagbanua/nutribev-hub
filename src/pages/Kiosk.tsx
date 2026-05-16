@@ -56,9 +56,10 @@ export default function Kiosk() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [areaCodes, setAreaCodes] = useState<AreaCode[]>([]);
   const [areaView, setAreaView] = useState<{ code: AreaCode; people: Profile[]; today: AttendanceRow[] } | null>(null);
-  const [showVisitor, setShowVisitor] = useState(false);
-  const [idle, setIdle] = useState(false);
-  const [showEmergency, setShowEmergency] = useState(false);
+  const [showVisitor, setShowVisitor]           = useState(false);
+  const [showVisitorCheck, setShowVisitorCheck] = useState(false);
+  const [idle, setIdle]                         = useState(false);
+  const [showEmergency, setShowEmergency]       = useState(false);
   // Live counters for the kiosk screen
   const [insideCount, setInsideCount] = useState<number | null>(null);
   const [activeTodayCount, setActiveTodayCount] = useState<number | null>(null);
