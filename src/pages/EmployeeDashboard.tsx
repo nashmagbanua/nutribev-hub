@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import PPERequestPage from "@/pages/PPERequest";
+import { PushPermissionBanner } from "@/components/PushPermissionBanner";
 import {
   CalendarDays, User, MessageSquare, ShieldCheck, Home,
   Camera, KeyRound, Mail, Eye, EyeOff, ChevronLeft, ChevronRight,
@@ -189,7 +190,7 @@ export default function EmployeeDashboard() {
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab === "home" && (
           <div className="space-y-4">
-
+          <PushPermissionBanner companyId={profile.company_id} />
             {/* Hero greeting */}
             <div className="rounded-2xl bg-card border border-border shadow-soft p-5 flex items-center gap-4">
               <div className="relative shrink-0">
